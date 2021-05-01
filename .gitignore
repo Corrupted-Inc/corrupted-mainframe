@@ -2,3 +2,7 @@
 .gradle/
 build/
 gradle.properties
+database.db
+logs/
+test.db
+transaction.log
