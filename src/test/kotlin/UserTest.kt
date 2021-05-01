@@ -1,10 +1,8 @@
 import core.db.Database
+import core.db.Guild
 import core.db.User
-import org.hibernate.Session
-import org.hibernate.testing.transaction.TransactionUtil.doInHibernate
 import org.junit.Test
 import java.io.File
-import java.util.function.Consumer
 import kotlin.test.assertEquals
 
 class UserTest {
@@ -17,14 +15,20 @@ class UserTest {
 
     @Test
     fun testSaving() {
-        doInHibernate(database::sessionFactory, Consumer { session: Session ->
+        val persisted = database.transaction {
             val user = User(456L)
-            session.persist(user)
+            val guild = Guild(1938754L)
+            user.servers.add(guild)
+            guild.users.add(user)
+            persist(user)
+            persist(guild)
+            return@transaction user
+        }
 
-            val found = session.find(User::class.java, user.id)
-            println("Found $found")
-
-            assertEquals(user, found)
-        })
+        database.transaction {
+            val found = find(User::class.java, persisted.id)
+            assertEquals(found, persisted)
+            assertEquals(found.servers, persisted.servers)
+        }
     }
 }
