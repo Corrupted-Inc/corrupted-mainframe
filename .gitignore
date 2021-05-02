@@ -6,3 +6,4 @@ database.db
 logs/
 test.db
 transaction.log
+config.json

@@ -4,7 +4,7 @@ import javax.persistence.*
 
 @Entity
 @Table(name = "users")
-class User private constructor(
+class UserM private constructor(
     @get:Id
     @get:GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long?,
@@ -17,7 +17,7 @@ class User private constructor(
         joinColumns = [JoinColumn(name = "user_id")],
         inverseJoinColumns = [JoinColumn(name = "guild_id")]
     )
-    var servers: MutableList<Guild>
+    var servers: MutableList<GuildM>
 ) {
     constructor(discordId: Long) : this(null, discordId, mutableListOf())
 
@@ -25,7 +25,7 @@ class User private constructor(
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
 
-        other as User
+        other as UserM
 
         if (id != other.id) return false
 
@@ -37,6 +37,6 @@ class User private constructor(
     }
 
     override fun toString(): String {
-        return "User(id=$id, discordId=$discordId)"
+        return "UserM(id=$id, discordId=$discordId)"
     }
 }

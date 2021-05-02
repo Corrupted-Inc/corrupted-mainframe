@@ -10,7 +10,7 @@
         <property name="hibernate.connection.url">jdbc:sqlite:database.db</property>
         <property name="hibernate.hbm2ddl.auto">update</property>
 
-        <mapping class="core.db.User"/>
-        <mapping class="core.db.Guild"/>
+        <mapping class="core.db.UserM"/>
+        <mapping class="core.db.GuildM"/>
     </session-factory>
 </hibernate-configuration>

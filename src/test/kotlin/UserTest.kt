@@ -1,6 +1,7 @@
 import core.db.Database
-import core.db.Guild
-import core.db.User
+import core.db.DatabaseWrapper
+import core.db.GuildM
+import core.db.UserM
 import org.junit.Test
 import java.io.File
 import kotlin.test.assertEquals
@@ -11,13 +12,14 @@ class UserTest {
             File("test.db").delete()
         }
         val database = Database { setProperty("hibernate.connection.url", "jdbc:sqlite:test.db") }
+        val wrapper = DatabaseWrapper(database)
     }
 
     @Test
     fun testSaving() {
         val persisted = database.transaction {
-            val user = User(456L)
-            val guild = Guild(1938754L)
+            val user = UserM(456L)
+            val guild = GuildM(1938754L)
             user.servers.add(guild)
             guild.users.add(user)
             persist(user)
@@ -26,9 +28,11 @@ class UserTest {
         }
 
         database.transaction {
-            val found = find(User::class.java, persisted.id)
+            val found = find(UserM::class.java, persisted.id)
             assertEquals(found, persisted)
             assertEquals(found.servers, persisted.servers)
         }
+//        println(wrapper.listGuilds())
+//        println(wrapper.listUsers())
     }
 }
