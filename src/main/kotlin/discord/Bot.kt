@@ -15,7 +15,7 @@ import net.dv8tion.jda.api.utils.concurrent.Task
 import java.time.Instant
 import java.util.logging.Logger
 
-class Bot(config: Config) {
+class Bot(val config: Config) {
     val database = Database()
     val dbWrapper = DatabaseWrapper(database)
     val logger: Logger = Logger.getLogger("bot logger")

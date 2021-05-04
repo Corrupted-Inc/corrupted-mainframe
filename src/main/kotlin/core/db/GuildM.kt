@@ -12,6 +12,8 @@ class GuildM(@get:Column(name = "discordId") var discordId: Long) {
     @get:ManyToMany(mappedBy = "servers")
     var users: MutableList<UserM> = mutableListOf()
 
+    var prefix: String = "!"
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -28,6 +30,6 @@ class GuildM(@get:Column(name = "discordId") var discordId: Long) {
     }
 
     override fun toString(): String {
-        return "Guild(id=$id, discordId=$discordId)"
+        return "Guild(id=$id, discordId=$discordId, prefix=$prefix)"
     }
 }

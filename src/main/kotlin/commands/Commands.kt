@@ -10,6 +10,7 @@ import utils.admin
 import java.awt.Color
 import java.time.temporal.TemporalAccessor
 import kotlinx.coroutines.*
+import net.dv8tion.jda.api.entities.User
 import utils.weightedRandom
 import java.time.Duration
 import java.time.Instant
@@ -34,6 +35,8 @@ class Commands(val bot: Bot) {
     }
 
     init {
+        class UserArg(name: String, optional: Boolean = false) : Argument<User>(User::class, { bot.jda.getUserById(it.removeSurrounding("<@", ">"))!! }, { bot.jda.retrieveUserById(it.removeSurrounding("<@", ">")).complete() != null }, name, optional)
+
         val unauthorized = EmbedBuilder().setTitle("Insufficient Permissions").setColor(Color(235, 70, 70)).build()
         handler.register(
             CommandBuilder<Message, MessageEmbed>("help").arg(IntArg("page", true)).ran { sender, args ->
@@ -103,25 +106,25 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("slots").ran { sender, args ->
+            CommandBuilder<Message, MessageEmbed>("slots").ran { sender, _ ->
                 val emotes = ":cherries:, :lemon:, :seven:, :broccoli:, :peach:, :green_apple:".split(", ")
 
-                val numberCorrect = weightedRandom(
+                val numberCorrect = /*weightedRandom(
                     listOf(1,     2,     3,     4,     5,      6),
-                    listOf(0.6,   0.2,   0.15,  0.03,  0.0199, 0.0001)
-                )
+                    listOf(0.6,   0.2,   0.15,  0.03,  0.0199, 0.000001)
+                )*/ Random.nextInt(1, 6)
 
                 fun section(count: Int, index: Int): List<String> {
                     return emotes.plus(emotes).slice(index..(index + emotes.size)).take(count)
                 }
 
-                val indexes = mutableListOf(Random.nextInt(emotes.size))
-                for (i in 0 until numberCorrect) {
-                    indexes.add(indexes[0])
-                }
-                for (i in 0 until emotes.size - numberCorrect) {
-                    indexes.add(Random.nextInt(emotes.size))
-                }
+                val indexes = MutableList(6) { Random.nextInt(0, 6) }
+//                for (i in 0 until numberCorrect) {
+//                    indexes.add(indexes[0])
+//                }
+//                for (i in 0 until emotes.size - numberCorrect) {
+//                    indexes.add(Random.nextInt(emotes.size))
+//                }
                 indexes.shuffle()
                 val wheels = indexes.map { section(3, it) }
                 var output = ""
@@ -131,11 +134,112 @@ class Commands(val bot: Bot) {
                 InternalCommandResult(embed("${sender.author.name} is playing...", description = output), true)
             }
         )
+
+        handler.register(
+            CommandBuilder<Message, MessageEmbed>("trace").arg(UserArg("ID")).ran { sender, args ->
+                val user = args["ID"] as User
+                val botAdmin = bot.database.transaction { bot.dbWrapper.getUser(sender.author, this) }?.botAdmin == true
+                val isAdmin = sender.member.admin || botAdmin
+                if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
+                val dbUser = bot.database.transaction { bot.dbWrapper.getUser(user, this) }
+
+                val embed = EmbedBuilder()
+                embed.setTitle("User ${user.asTag} (${user.id})")
+
+                embed.setThumbnail(user.avatarUrl)
+
+                embed.addField("Account Creation Date:", user.timeCreated.toString(), true)
+
+                embed.addField("Flags:", if (user.flags.isEmpty()) "None" else user.flags.joinToString { it.getName() }, false)
+
+                if (dbUser != null) {
+                    embed.addField("**Database Info**", "", false)
+                    if (botAdmin) {
+                        for (guild in dbUser.servers) {
+                            val resolved = sender.jda.getGuildById(guild.discordId) ?: continue
+                            val member = resolved.getMember(user) ?: continue
+                            embed.addField(
+                                resolved.name,
+                                "Join date: ${member.timeJoined}\nNickname: ${member.effectiveName}\nRoles: ${member.roles.joinToString { it.name }}\nAdmin: ${member.admin}",
+                                false
+                            )
+                        }
+                    } else {
+                        embed.addField("Insufficient permissions", "To view information from the database you must be a global admin.", false)
+                    }
+                }
+
+                return@ran InternalCommandResult(embed.build(), true)
+            }
+        )
+
+        handler.register(
+            CommandBuilder<Message, MessageEmbed>("prefix").arg(StringArg("prefix")).ran { sender, args ->
+                val isAdmin = bot.database.transaction { bot.dbWrapper.getUser(sender.author, this) }?.botAdmin == true || sender.member.admin
+                if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
+
+                val prefix = args["prefix"] as? String ?: return@ran InternalCommandResult(embed("Invalid prefix"), false)
+
+                if (!prefix.matches(".{1,30}".toRegex())) {
+                    return@ran InternalCommandResult(embed("Invalid prefix"), false)
+                }
+
+                bot.database.transaction {
+                    val model = bot.dbWrapper.getGuild(sender.guild, this) ?: return@transaction null
+                    detach(model)
+
+                    model.prefix = prefix
+
+                    merge(model)
+                }
+
+                return@ran InternalCommandResult(embed("Successfully set prefix"), true)
+            }
+        )
+
+        handler.register(
+            CommandBuilder<Message, MessageEmbed>("admin").arg(UserArg("user")).ran { sender, args ->
+                val isAdmin = bot.database.transaction { bot.dbWrapper.getUser(sender.author, this) }?.botAdmin == true || bot.config.permaAdmins.contains(sender.author.id)
+                if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
+
+                val user = args["user"] as User
+
+                bot.database.transaction {
+                    val model = bot.dbWrapper.getUser(user, this) ?: return@transaction
+                    detach(model)
+                    model.botAdmin = true
+                    merge(model)
+                }
+
+                return@ran InternalCommandResult(embed("Successfully made @${user.asTag} a global admin"), true)
+            }
+        )
+
+        handler.register(
+            CommandBuilder<Message, MessageEmbed>("unadmin").arg(UserArg("user")).ran { sender, args ->
+                val isAdmin = bot.database.transaction { bot.dbWrapper.getUser(sender.author, this) }?.botAdmin == true || bot.config.permaAdmins.contains(sender.author.id)
+                if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
+
+                val user = args["user"] as User
+
+                if (user.id in bot.config.permaAdmins) return@ran InternalCommandResult(embed("Cannot un-admin a permanent admin.", color = Color(235, 70, 70)), false)
+
+                bot.database.transaction {
+                    val model = bot.dbWrapper.getUser(user, this) ?: return@transaction
+                    detach(model)
+                    model.botAdmin = false
+                    merge(model)
+                }
+
+                return@ran InternalCommandResult(embed("Successfully made @${user.asTag} a non-admin"), true)
+            }
+        )
     }
 
     fun handle(message: Message) {
         GlobalScope.launch {
-            handler.handleAndSend("!", message.contentRaw, message)
+            val prefix = bot.database.transaction { bot.dbWrapper.getGuild(message.guild, this) }?.prefix ?: "!"
+            handler.handleAndSend(prefix, message.contentRaw, message)
         }
     }
 }

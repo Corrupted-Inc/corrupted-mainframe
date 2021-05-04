@@ -30,6 +30,8 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
 
     class IntArg(name: String, optional: Boolean = false) : Argument<Int>(Int::class, String::toInt, { it.matches("-?\\d+".toRegex()) }, name, optional)
 
+    class LongArg(name: String, optional: Boolean = false) : Argument<Long>(Long::class, String::toLong, { it.matches("-?\\d+".toRegex()) }, name, optional)
+
     class DoubleArg(name: String, optional: Boolean = false) : Argument<Double>(Double::class, String::toDouble, { it.matches("^-?\\d+($|(\\.\\d+))".toRegex()) }, name, optional)
 
     class Command<S, D> private constructor(
