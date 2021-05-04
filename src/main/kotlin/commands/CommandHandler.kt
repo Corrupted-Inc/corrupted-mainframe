@@ -2,7 +2,7 @@ package commands
 
 import kotlin.reflect.KClass
 
-typealias Runner<S, D> = (sender: S, args: Map<String, Any>) -> CommandHandler.InternalCommandResult<D>
+typealias Runner<S, D> = suspend (sender: S, args: Map<String, Any>) -> CommandHandler.InternalCommandResult<D>
 
 typealias Sender<S, D> = (CommandHandler.CommandResult<S, D>) -> Unit
 
@@ -14,11 +14,15 @@ typealias Sender<S, D> = (CommandHandler.CommandResult<S, D>) -> Unit
  * handler.register(CommandBuilder<String, String>("help").arg(IntArg("page"))
  *     .ran { sender, args -> InternalCommandResult(..., true) }.build()
  * )
- * handler.handleAndSend("!", "!help 2", "username")
+ * GlobalScope.launch {
+ *     handler.handleAndSend("!", "!help 2", "username")
+ * }
  * ```
  */
 open class CommandHandler<S, D>(val send: Sender<S, D>) {
     val commands = mutableListOf<Command<S, D>>()
+
+    data class CommandCategory(val name: String, val subcategories: List<CommandCategory>)
 
     open class Argument<T : Any>(val type: KClass<T>, val parser: (String) -> T, val checker: (String) -> Boolean, val name: String, val optional: Boolean)
 
@@ -28,7 +32,14 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
 
     class DoubleArg(name: String, optional: Boolean = false) : Argument<Double>(Double::class, String::toDouble, { it.matches("^-?\\d+($|(\\.\\d+))".toRegex()) }, name, optional)
 
-    class Command<S, D> private constructor(val base: String, val arguments: List<Argument<*>>, val help: String, val runner: Runner<S, D>, val overrideSend: Sender<S, D>?) {
+    class Command<S, D> private constructor(
+        val base: String,
+        val arguments: List<Argument<*>>,
+        val help: String,
+        val runner: Runner<S, D>,
+        val overrideSend: Sender<S, D>?,
+        val category: CommandCategory?
+    ) {
 
         fun matches(args: List<String>): Pair<Boolean, List<Argument<*>>> {
             if (args.isEmpty() && !arguments.any { !it.optional }) return Pair(true, arguments)
@@ -55,13 +66,15 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
             private val runner: Runner<S, D>?
             private val overrideSend: Sender<S, D>?
             private val help: String
+            private val category: CommandCategory?
 
-            private constructor(base: String, args: List<Argument<*>>, help: String, runner: Runner<S, D>?, overrideSend: Sender<S, D>?) {
+            private constructor(base: String, args: List<Argument<*>>, help: String, runner: Runner<S, D>?, overrideSend: Sender<S, D>?, category: CommandCategory?) {
                 this.base = base
                 this.args = args
                 this.runner = runner
                 this.overrideSend = overrideSend
                 this.help = help
+                this.category = category
             }
 
             constructor(base: String) {
@@ -70,30 +83,35 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
                 runner = null
                 overrideSend = null
                 help = ""
+                category = null
             }
 
             fun arg(type: Argument<*>): CommandBuilder<S, D> {
-                return CommandBuilder(base, args.plus(type), help, runner, overrideSend)
+                return CommandBuilder(base, args.plus(type), help, runner, overrideSend, category)
             }
 
             fun args(vararg type: Argument<*>): CommandBuilder<S, D> {
-                return CommandBuilder(base, args.plus(type), help, runner, overrideSend)
+                return CommandBuilder(base, args.plus(type), help, runner, overrideSend, category)
             }
 
             fun ran(runner: Runner<S, D>): CommandBuilder<S, D> {
-                return CommandBuilder(base, args, help, runner, overrideSend)
+                return CommandBuilder(base, args, help, runner, overrideSend, category)
             }
 
             fun sent(overrideSend: Sender<S, D>): CommandBuilder<S, D> {
-                return CommandBuilder(base, args, help, runner, overrideSend)
+                return CommandBuilder(base, args, help, runner, overrideSend, category)
             }
 
             fun help(text: String): CommandBuilder<S, D> {
-                return CommandBuilder(base, args, text, runner, overrideSend)
+                return CommandBuilder(base, args, text, runner, overrideSend, category)
+            }
+
+            fun category(category: CommandCategory?): CommandBuilder<S, D> {
+                return CommandBuilder(base, args, help, runner, overrideSend, category)
             }
 
             fun build(): Command<S, D> {
-                return Command(base, args, help, runner!!, overrideSend)
+                return Command(base, args, help, runner!!, overrideSend, category)
             }
         }
     }
@@ -110,7 +128,7 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
         commands.add(command.build())
     }
 
-    fun handle(prefix: String, input: String, sender: S): CommandResult<S, D> {
+    suspend fun handle(prefix: String, input: String, sender: S): CommandResult<S, D> {
         if (!input.startsWith(prefix)) return CommandResult(sender, null, false, null)
         val stripped = input.removePrefix(prefix).removePrefix(" ")
         val tokens = tokenize(stripped)
@@ -122,10 +140,10 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
         for ((item, value) in usedArgs.zip(args)) {
             map[item.name] = item.parser(value)
         }
-        return try { found.runner(sender, map).run { CommandResult(sender, value, success, found) } } catch (e: Exception) { CommandResult(sender, null, false, found) }
+        return try { found.runner(sender, map).run { CommandResult(sender, value, success, found) } } catch (e: Exception) { e.printStackTrace(); CommandResult(sender, null, false, found) }
     }
 
-    fun handleAndSend(prefix: String, input: String, sender: S): CommandResult<S, D> {
+    suspend fun handleAndSend(prefix: String, input: String, sender: S): CommandResult<S, D> {
         val result = handle(prefix, input, sender)
         val c = result.command ?: return result
         val overrideSend = c.overrideSend ?: run { send(result); return result }

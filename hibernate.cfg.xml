@@ -3,8 +3,8 @@
 
 <hibernate-configuration>
     <session-factory>
-        <property name="show_sql">false</property>
-        <property name="format_sql">false</property>
+        <property name="show_sql">true</property>
+        <property name="format_sql">true</property>
         <property name="dialect">org.hibernate.dialect.SQLiteDialect</property>
         <property name="connection.driver_class">org.sqlite.JDBC</property>
         <property name="hibernate.connection.url">jdbc:sqlite:database.db</property>

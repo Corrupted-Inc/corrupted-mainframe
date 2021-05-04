@@ -51,6 +51,7 @@ dependencies {
 //    implementation(group = "org.apache.logging.log4j", name = "log4j-core", version = "2.14.1")
     implementation(group = "org.slf4j", name = "slf4j-log4j12", version = "1.7.30")
     implementation(group = "com.github.gwenn", name = "sqlite-dialect", version = "master") // ???
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.4.3")
 }
 
 tasks.test {

@@ -17,9 +17,11 @@ class UserM private constructor(
         joinColumns = [JoinColumn(name = "user_id")],
         inverseJoinColumns = [JoinColumn(name = "guild_id")]
     )
-    var servers: MutableList<GuildM>
+    var servers: MutableList<GuildM>,
+
+    var botAdmin: Boolean
 ) {
-    constructor(discordId: Long) : this(null, discordId, mutableListOf())
+    constructor(discordId: Long) : this(null, discordId, mutableListOf(), false)
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
