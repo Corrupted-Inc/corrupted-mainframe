@@ -44,14 +44,12 @@ dependencies {
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.6.0")
     implementation("net.dv8tion:JDA:4.2.1_253")
     implementation(group = "com.beust", name = "klaxon", version = "5.5")
-    implementation(group = "org.hibernate", name = "hibernate-core", version = "5.4.31.Final")
-    implementation(group = "org.hibernate", name = "hibernate-testing", version = "5.4.31.Final")
     implementation(group = "org.xerial", name = "sqlite-jdbc", version = "3.34.0")
     implementation(group = "org.apache.logging.log4j", name = "log4j", version = "2.14.1")
-//    implementation(group = "org.apache.logging.log4j", name = "log4j-core", version = "2.14.1")
     implementation(group = "org.slf4j", name = "slf4j-log4j12", version = "1.7.30")
-    implementation(group = "com.github.gwenn", name = "sqlite-dialect", version = "master") // ???
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.4.3")
+    implementation(group = "org.jetbrains.exposed", name = "exposed-dao", version = "0.31.1")
+    implementation(group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "0.31.1")
 }
 
 tasks.test {

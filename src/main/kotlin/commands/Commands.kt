@@ -11,7 +11,8 @@ import java.awt.Color
 import java.time.temporal.TemporalAccessor
 import kotlinx.coroutines.*
 import net.dv8tion.jda.api.entities.User
-import utils.weightedRandom
+import org.jetbrains.exposed.sql.transactions.transaction
+import utils.toHumanReadable
 import java.time.Duration
 import java.time.Instant
 import kotlin.random.Random
@@ -61,11 +62,11 @@ class Commands(val bot: Bot) {
                 builder.setThumbnail(sender.guild.iconUrl)
                 builder.setDescription("""
                     **Bot Info**
-                     Members: ${bot.dbWrapper.listUsers().size}
-                     Guilds: ${bot.dbWrapper.listGuilds().size}
+                     Members: ${bot.database.users().size}
+                     Guilds: ${bot.database.guilds().size}
                      Commands: ${handler.commands.size}
                      Gateway ping: ${bot.jda.gatewayPing}ms
-                     Uptime: ${Duration.between(bot.startTime, Instant.now()).toString().removePrefix("PT").replace("(\\d[HMS])(?!$)".toRegex(), "$1 ").toLowerCase()}
+                     Uptime: ${Duration.between(bot.startTime, Instant.now()).toHumanReadable()}
                 """.trimIndent())
                 InternalCommandResult(builder.build(), true)
             }
@@ -75,10 +76,7 @@ class Commands(val bot: Bot) {
         handler.register(
             CommandBuilder<Message, MessageEmbed>("ban").arg(StringArg("user id")).ran { sender, args ->
                 val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
-                var isAdmin = false
-                bot.database.transaction {
-                    isAdmin = bot.dbWrapper.getUser(sender.author, this)?.botAdmin == true || sender.member.admin
-                }
+                val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
                 sender.guild.ban(id, 0).complete()
                 return@ran InternalCommandResult(embed("Banned", description = "Banned <@$id>"), true)
@@ -88,7 +86,7 @@ class Commands(val bot: Bot) {
         handler.register(
             CommandBuilder<Message, MessageEmbed>("unban").arg(StringArg("user id")).ran { sender, args ->
                 val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
-                val isAdmin = bot.database.transaction { bot.dbWrapper.getUser(sender.author, this) }?.botAdmin == true || sender.member.admin
+                val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
                 sender.guild.unban(id).complete()
                 return@ran InternalCommandResult(embed("Unbanned", description = "Unbanned <@$id>"), true)
@@ -98,7 +96,7 @@ class Commands(val bot: Bot) {
         handler.register(
             CommandBuilder<Message, MessageEmbed>("kick").arg(StringArg("user id")).ran { sender, args ->
                 val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
-                val isAdmin = bot.database.transaction { bot.dbWrapper.getUser(sender.author, this) }?.botAdmin == true || sender.member.admin
+                val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
                 sender.guild.kick(id).complete()
                 return@ran InternalCommandResult(embed("Kicked", description = "Kicked <@$id>"), true)
@@ -138,10 +136,10 @@ class Commands(val bot: Bot) {
         handler.register(
             CommandBuilder<Message, MessageEmbed>("trace").arg(UserArg("ID")).ran { sender, args ->
                 val user = args["ID"] as User
-                val botAdmin = bot.database.transaction { bot.dbWrapper.getUser(sender.author, this) }?.botAdmin == true
+                val botAdmin = bot.database.user(sender.author).botAdmin
                 val isAdmin = sender.member.admin || botAdmin
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
-                val dbUser = bot.database.transaction { bot.dbWrapper.getUser(user, this) }
+                val dbUser = bot.database.user(user)
 
                 val embed = EmbedBuilder()
                 embed.setTitle("User ${user.asTag} (${user.id})")
@@ -152,21 +150,19 @@ class Commands(val bot: Bot) {
 
                 embed.addField("Flags:", if (user.flags.isEmpty()) "None" else user.flags.joinToString { it.getName() }, false)
 
-                if (dbUser != null) {
-                    embed.addField("**Database Info**", "", false)
-                    if (botAdmin) {
-                        for (guild in dbUser.servers) {
-                            val resolved = sender.jda.getGuildById(guild.discordId) ?: continue
-                            val member = resolved.getMember(user) ?: continue
-                            embed.addField(
-                                resolved.name,
-                                "Join date: ${member.timeJoined}\nNickname: ${member.effectiveName}\nRoles: ${member.roles.joinToString { it.name }}\nAdmin: ${member.admin}",
-                                false
-                            )
-                        }
-                    } else {
-                        embed.addField("Insufficient permissions", "To view information from the database you must be a global admin.", false)
+                embed.addField("**Database Info**", "", false)
+                if (botAdmin) {
+                    for (guild in transaction(bot.database.db) { dbUser.guilds.toList() }) {
+                        val resolved = sender.jda.getGuildById(guild.discordId) ?: continue
+                        val member = resolved.getMember(user) ?: continue
+                        embed.addField(
+                            resolved.name,
+                            "Join date: ${member.timeJoined}\nNickname: ${member.effectiveName}\nRoles: ${member.roles.joinToString { it.name }}\nAdmin: ${member.admin}",
+                            false
+                        )
                     }
+                } else {
+                    embed.addField("Insufficient permissions", "To view information from the database you must be a global admin.", false)
                 }
 
                 return@ran InternalCommandResult(embed.build(), true)
@@ -175,7 +171,7 @@ class Commands(val bot: Bot) {
 
         handler.register(
             CommandBuilder<Message, MessageEmbed>("prefix").arg(StringArg("prefix")).ran { sender, args ->
-                val isAdmin = bot.database.transaction { bot.dbWrapper.getUser(sender.author, this) }?.botAdmin == true || sender.member.admin
+                val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
 
                 val prefix = args["prefix"] as? String ?: return@ran InternalCommandResult(embed("Invalid prefix"), false)
@@ -184,14 +180,7 @@ class Commands(val bot: Bot) {
                     return@ran InternalCommandResult(embed("Invalid prefix"), false)
                 }
 
-                bot.database.transaction {
-                    val model = bot.dbWrapper.getGuild(sender.guild, this) ?: return@transaction null
-                    detach(model)
-
-                    model.prefix = prefix
-
-                    merge(model)
-                }
+                transaction(bot.database.db) { bot.database.guild(sender.guild).prefix = prefix }
 
                 return@ran InternalCommandResult(embed("Successfully set prefix"), true)
             }
@@ -199,17 +188,12 @@ class Commands(val bot: Bot) {
 
         handler.register(
             CommandBuilder<Message, MessageEmbed>("admin").arg(UserArg("user")).ran { sender, args ->
-                val isAdmin = bot.database.transaction { bot.dbWrapper.getUser(sender.author, this) }?.botAdmin == true || bot.config.permaAdmins.contains(sender.author.id)
+                val isAdmin = bot.database.user(sender.author).botAdmin || bot.config.permaAdmins.contains(sender.author.id)
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
 
                 val user = args["user"] as User
 
-                bot.database.transaction {
-                    val model = bot.dbWrapper.getUser(user, this) ?: return@transaction
-                    detach(model)
-                    model.botAdmin = true
-                    merge(model)
-                }
+                transaction(bot.database.db) { bot.database.user(user).botAdmin = true }
 
                 return@ran InternalCommandResult(embed("Successfully made @${user.asTag} a global admin"), true)
             }
@@ -217,28 +201,58 @@ class Commands(val bot: Bot) {
 
         handler.register(
             CommandBuilder<Message, MessageEmbed>("unadmin").arg(UserArg("user")).ran { sender, args ->
-                val isAdmin = bot.database.transaction { bot.dbWrapper.getUser(sender.author, this) }?.botAdmin == true || bot.config.permaAdmins.contains(sender.author.id)
+                val isAdmin = bot.database.user(sender.author).botAdmin || bot.config.permaAdmins.contains(sender.author.id)
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
 
                 val user = args["user"] as User
 
                 if (user.id in bot.config.permaAdmins) return@ran InternalCommandResult(embed("Cannot un-admin a permanent admin.", color = Color(235, 70, 70)), false)
 
-                bot.database.transaction {
-                    val model = bot.dbWrapper.getUser(user, this) ?: return@transaction
-                    detach(model)
-                    model.botAdmin = false
-                    merge(model)
-                }
+                transaction(bot.database.db) { bot.database.user(user).botAdmin = false }
 
                 return@ran InternalCommandResult(embed("Successfully made @${user.asTag} a non-admin"), true)
+            }
+        )
+
+        handler.register(
+            CommandBuilder<Message, MessageEmbed>("mute").args(UserArg("user"), IntArg("seconds")).ran { sender, args ->
+                val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
+
+                if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
+
+                val user = args["user"] as User
+                val time = (args["seconds"] as Int).coerceAtLeast(15)
+                val member = sender.guild.getMember(user) ?: return@ran InternalCommandResult(embed("Must be a member of this server"), false)
+
+                val end = Instant.now().plusSeconds(time.toLong())
+                bot.database.addMute(user, member.roles, end, sender.guild)
+
+                member.guild.modifyMemberRoles(member, listOf()).complete()
+
+                return@ran InternalCommandResult(embed("Muted ${user.asMention} for ${Duration.between(Instant.now(), end).toHumanReadable()}"), true)
+            }
+        )
+
+        handler.register(
+            CommandBuilder<Message, MessageEmbed>("unmute").args(UserArg("user")).ran { sender, args ->
+                val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
+
+                if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
+
+                val user = args["user"] as User
+
+                val mute = bot.database.findMute(user, sender.guild) ?: return@ran InternalCommandResult(embed("${user.asMention} isn't muted!"), false)
+
+                sender.guild.modifyMemberRoles(sender.guild.getMember(user)!!, bot.database.roleIds(mute).map { sender.guild.getRoleById(it) }).complete()
+
+                return@ran InternalCommandResult(embed("Unmuted ${user.asMention}"), true)
             }
         )
     }
 
     fun handle(message: Message) {
         GlobalScope.launch {
-            val prefix = bot.database.transaction { bot.dbWrapper.getGuild(message.guild, this) }?.prefix ?: "!"
+            val prefix = bot.database.guild(message.guild).prefix
             handler.handleAndSend(prefix, message.contentRaw, message)
         }
     }
