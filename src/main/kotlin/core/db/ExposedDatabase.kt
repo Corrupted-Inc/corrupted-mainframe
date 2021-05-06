@@ -14,7 +14,7 @@ import java.time.Instant
 class ExposedDatabase(val db: Database) {
     init {
         transaction(db) {
-            SchemaUtils.create(GuildMs, UserMs, GuildUsers, Mutes, MutedUserRoles)
+            SchemaUtils.create(GuildMs, UserMs, GuildUsers, Mutes, MutedUserRoles, /*MusicStates*/)
         }
     }
 
@@ -76,6 +76,27 @@ class ExposedDatabase(val db: Database) {
         var mute by Mute referencedOn MutedUserRoles.mute
         var role by MutedUserRoles.role
     }
+
+//    object MusicStates : LongIdTable(name = "music_states") {
+//        val guild = reference("guild", GuildMs)
+//        val channel = long("channel")
+//        val audioSource = varchar("audioSource", 255)
+//        val position = double("position")
+//        val paused = bool("paused")
+//        val volume = double("volume")
+//        val lastUpdated = long("lastUpdated")
+//    }
+//
+//    class MusicState(id: EntityID<Long>) : LongEntity(id) {
+//        companion object : LongEntityClass<MusicState>(MusicStates)
+//        var guild       by GuildM referencedOn MusicStates.guild
+//        var channel     by MusicStates.channel
+//        var audioSource by MusicStates.audioSource
+//        var position    by MusicStates.position
+//        var paused      by MusicStates.paused
+//        var volume      by MusicStates.volume
+//        var lastUpdated by MusicStates.lastUpdated
+//    }
 
     fun user(user: User) = transaction(db) { UserM.find { UserMs.discordId eq user.idLong }.firstOrNull() ?: UserM.new { discordId = user.idLong; botAdmin = false } }
 
@@ -173,4 +194,52 @@ class ExposedDatabase(val db: Database) {
     fun findMute(user: User, guild: Guild): Mute? {
         return mutes(user, guild).firstOrNull()
     }
+//
+//    fun musicStates(guild: Guild): List<MusicState> {
+//        val guildm = guild(guild)
+//        return transaction(db) { MusicState.find { MusicStates.guild eq guildm.id }.toList() }
+//    }
+//
+//    fun musicState(guild: Guild, channel: VoiceChannel): MusicState? {
+//        val guildm = guild(guild)
+//        return transaction(db) { MusicState.find { (MusicStates.guild eq guildm.id) and (MusicStates.channel eq channel.idLong) }.firstOrNull() }
+//    }
+//
+//    fun clearMusicState(state: MusicState) {
+//        transaction(db) { state.delete() }
+//    }
+//
+//    fun updateMusicState(state: MusicState, position: Double, paused: Boolean, volume: Double) {
+//        transaction(db) {
+//            state.position = position
+//            state.paused = paused
+//            state.volume = volume
+//            state.lastUpdated = Instant.now().epochSecond
+//        }
+//    }
+//
+//    fun updateMusicState(state: MusicState, paused: Boolean, volume: Double) {
+//        transaction(db) {
+//            val now = Instant.now().epochSecond
+//            state.position += now - state.lastUpdated
+//            state.lastUpdated = now
+//            state.paused = paused
+//            state.volume = volume
+//        }
+//    }
+//
+//    fun createMusicState(channel: VoiceChannel, source: String): MusicState {
+//        val guild = guild(channel.guild)
+//        return transaction(db) {
+//            MusicState.new {
+//                position = 0.0
+//                volume = 1.0
+//                paused = false
+//                audioSource = source
+//                this.guild = guild
+//                this.channel = channel.idLong
+//                lastUpdated = Instant.now().epochSecond
+//            }
+//        }
+//    }
 }

@@ -1,5 +1,6 @@
 package discord
 
+import audio.Audio
 import commands.Commands
 import core.Config
 import core.db.ExposedDatabase
@@ -19,9 +20,10 @@ import kotlin.concurrent.schedule
 class Bot(val config: Config) {
     val logger: Logger = Logger.getLogger("bot logger")
     val listeners = MultiListener()
-    val startTime = Instant.now()
-    val jda = JDABuilder.create(config.token, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS).addEventListeners(listeners).build()
+    val startTime: Instant = Instant.now()
+    val jda = JDABuilder.create(config.token, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS, GatewayIntent.GUILD_VOICE_STATES).addEventListeners(listeners).build()
     val database = ExposedDatabase(Database.connect("jdbc:sqlite:database.db", driver = "org.sqlite.JDBC").apply { useNestedTransactions = true })
+    val audio = Audio()
 
     init {
         listeners.add(object : ListenerAdapter() {
@@ -32,27 +34,28 @@ class Bot(val config: Config) {
                         database.addLink(guild, it.user)
                     }
                 }
+
+                Timer().schedule(0, 15_000L) {
+                    for (mute in database.expiringMutes()) {
+                        try {
+                            transaction(database.db) {
+                                val guild = jda.getGuildById(mute.guild.discordId)!!
+                                val member = guild.getMemberById(mute.user.discordId)!!
+                                val roles = database.roleIds(mute).map { guild.getRoleById(it) }
+                                guild.modifyMemberRoles(member, roles).queue()
+                                database.removeMute(mute)
+                            }
+                        } catch (e: NullPointerException) {
+                            database.removeMute(mute)
+                        }
+                    }
+                }
             }
 
             override fun onGuildMemberJoin(event: GuildMemberJoinEvent) {
                 database.addLink(event.guild, event.user)
             }
         })
-        Timer().schedule(0L, 15_000L) {
-            for (mute in database.expiringMutes()) {
-                try {
-                    transaction(database.db) {
-                        val guild = jda.getGuildById(mute.guild.discordId)!!
-                        val member = guild.getMemberById(mute.user.discordId)!!
-                        val roles = database.roleIds(mute).map { guild.getRoleById(it) }
-                        guild.modifyMemberRoles(member, roles).queue()
-                        database.removeMute(mute)
-                    }
-                } catch (e: NullPointerException) {
-                    database.removeMute(mute)
-                }
-            }
-        }
     }
 
     private val commands = Commands(this)

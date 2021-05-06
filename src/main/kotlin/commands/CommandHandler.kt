@@ -35,7 +35,7 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
     class DoubleArg(name: String, optional: Boolean = false) : Argument<Double>(Double::class, String::toDouble, { it.matches("^-?\\d+($|(\\.\\d+))".toRegex()) }, name, optional)
 
     class Command<S, D> private constructor(
-        val base: String,
+        val base: List<String>,
         val arguments: List<Argument<*>>,
         val help: String,
         val runner: Runner<S, D>,
@@ -63,14 +63,14 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
         }
 
         class CommandBuilder<S, D> {
-            private val base: String
+            private val base: List<String>
             private val args: List<Argument<*>>
             private val runner: Runner<S, D>?
             private val overrideSend: Sender<S, D>?
             private val help: String
             private val category: CommandCategory?
 
-            private constructor(base: String, args: List<Argument<*>>, help: String, runner: Runner<S, D>?, overrideSend: Sender<S, D>?, category: CommandCategory?) {
+            private constructor(base: List<String>, args: List<Argument<*>>, help: String, runner: Runner<S, D>?, overrideSend: Sender<S, D>?, category: CommandCategory?) {
                 this.base = base
                 this.args = args
                 this.runner = runner
@@ -79,8 +79,8 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
                 this.category = category
             }
 
-            constructor(base: String) {
-                this.base = base
+            constructor(vararg base: String) {
+                this.base = base.toList()
                 args = emptyList()
                 runner = null
                 overrideSend = null
@@ -136,7 +136,7 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
         val tokens = tokenize(stripped)
         val name = tokens.getOrNull(0) ?: return CommandResult(sender, null, false, null)
         val args = tokens.drop(1)
-        val found = commands.singleOrNull { it.base == name && it.matches(args).first } ?: return CommandResult(sender, null, false, null)
+        val found = commands.singleOrNull { it.base.contains(name) && it.matches(args).first } ?: return CommandResult(sender, null, false, null)
         val usedArgs = found.matches(args).second
         val map = mutableMapOf<String, Any>()
         for ((item, value) in usedArgs.zip(args)) {

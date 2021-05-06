@@ -50,6 +50,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.4.3")
     implementation(group = "org.jetbrains.exposed", name = "exposed-dao", version = "0.31.1")
     implementation(group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "0.31.1")
+    implementation("com.sedmelluq:lavaplayer:1.3.76")
 }
 
 tasks.test {
