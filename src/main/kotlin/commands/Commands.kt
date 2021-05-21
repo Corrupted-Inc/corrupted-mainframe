@@ -77,7 +77,7 @@ class Commands(val bot: Bot) {
                 builder.setTitle("Help ${page + 1}/${list.size}")
                 for (command in commands) {
                     val base = if (command.base.size == 1) command.base.first() else command.base.joinToString(prefix = "(", separator = "/", postfix = ")")
-                    builder.addField(base + " " + command.arguments.joinToString(" ") { if (it.optional) "[${it.name}]" else "<${it.name}>" }, command.help, true)
+                    builder.addField(base + " " + command.arguments.joinToString(" ") { if (it.optional) "[${it.name}]" else "<${it.name}>" }, command.help, false)
                 }
                 InternalCommandResult(builder.build(), true)
             }.help("Shows a list of commands and their descriptions.")
@@ -170,29 +170,35 @@ class Commands(val bot: Bot) {
                 val dbUser = bot.database.user(user)
 
                 val embed = EmbedBuilder()
+                val dmEmbed = EmbedBuilder()
                 embed.setTitle("User ${user.asTag} (${user.id})")
+                dmEmbed.setTitle("User ${user.asTag} (${user.id})")
 
                 embed.setThumbnail(user.avatarUrl)
+                dmEmbed.setThumbnail(user.avatarUrl)
 
                 embed.addField("Account Creation Date:", user.timeCreated.toString(), true)
+                dmEmbed.addField("Account Creation Date:", user.timeCreated.toString(), true)
 
                 embed.addField("Flags:", if (user.flags.isEmpty()) "None" else user.flags.joinToString { it.getName() }, false)
+                dmEmbed.addField("Flags:", if (user.flags.isEmpty()) "None" else user.flags.joinToString { it.getName() }, false)
 
-                embed.addField("**Database Info**", "", false)
+                dmEmbed.addField("**Database Info**", "", false)
                 if (botAdmin) {
                     for (guild in transaction(bot.database.db) { dbUser.guilds.toList() }) {
                         val resolved = sender.jda.getGuildById(guild.discordId) ?: continue
                         val member = resolved.getMember(user) ?: continue
-                        embed.addField(
+                        dmEmbed.addField(
                             resolved.name,
                             "Join date: ${member.timeJoined}\nNickname: ${member.effectiveName}\nRoles: ${member.roles.joinToString { it.name }}\nAdmin: ${member.admin}",
                             false
                         )
                     }
                 } else {
-                    embed.addField("Insufficient permissions", "To view information from the database you must be a global admin.", false)
+                    dmEmbed.addField("Insufficient permissions", "To view information from the database you must be a global admin.", false)
                 }
 
+                sender.author.openPrivateChannel().complete().sendMessage(dmEmbed.build()).queue()
                 return@ran InternalCommandResult(embed.build(), true)
             }
         )
@@ -339,8 +345,9 @@ class Commands(val bot: Bot) {
         }
 
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("play").args(StringArg("source"), StringArg("channel")).ran { sender, args ->
-                val channel = try { sender.guild.getVoiceChannelById((args["channel"] as String).removeSurrounding("<#", ">")) } catch (e: NumberFormatException) { null }
+            CommandBuilder<Message, MessageEmbed>("play").args(StringArg("source"), StringArg("channel", optional = true)).ran { sender, args ->
+                var channel = if (args["channel"] == null) sender.member?.voiceState?.channel else null
+                if (channel == null) channel = try { sender.guild.getVoiceChannelById((args["channel"] as String).removeSurrounding("<#", ">")) } catch (e: NumberFormatException) { null }
                     ?: sender.guild.getVoiceChannelsByName(args["channel"] as String, false).firstOrNull()
                     ?: return@ran InternalCommandResult(embed("Please specify a valid voice channel"), false)
 
@@ -352,6 +359,7 @@ class Commands(val bot: Bot) {
                 }
 
                 val player = Audio.AudioPlayerSendHandler(bot.audio.playerManager.createPlayer())
+//                val musicState = bot.database.createMusicState(channel, )
                 val state = Audio.AudioState(channel, player, t, 0)
 
                 player.audioPlayer.addListener(object : AudioEventAdapter() {

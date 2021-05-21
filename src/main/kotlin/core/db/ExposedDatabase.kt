@@ -3,6 +3,7 @@ package core.db
 import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.Role
 import net.dv8tion.jda.api.entities.User
+import net.dv8tion.jda.api.entities.VoiceChannel
 import org.jetbrains.exposed.dao.LongEntity
 import org.jetbrains.exposed.dao.LongEntityClass
 import org.jetbrains.exposed.dao.id.EntityID
@@ -77,25 +78,40 @@ class ExposedDatabase(val db: Database) {
         var role by MutedUserRoles.role
     }
 
+//    /*
+//    * Needs to store:
+//    *  - Playlist position
+//    *  - Volume
+//    *  - Paused
+//    */
+//
+//    object PlaylistEntries : LongIdTable(name = "playlist_entries") {
+//        val state = reference("state", MusicStates)
+//        val audioSource = varchar("audioSource", 255)
+//        val position = long("position")
+//    }
+//
+//    class PlaylistEntry(id: EntityID<Long>) : LongEntity(id) {
+//        companion object : LongEntityClass<PlaylistEntry>(PlaylistEntries)
+//        var state       by PlaylistEntries.state
+//        var audioSource by PlaylistEntries.audioSource
+//        var position    by PlaylistEntries.position
+//    }
+//
 //    object MusicStates : LongIdTable(name = "music_states") {
 //        val guild = reference("guild", GuildMs)
 //        val channel = long("channel")
-//        val audioSource = varchar("audioSource", 255)
-//        val position = double("position")
 //        val paused = bool("paused")
 //        val volume = double("volume")
-//        val lastUpdated = long("lastUpdated")
+//        val playlist =
 //    }
 //
 //    class MusicState(id: EntityID<Long>) : LongEntity(id) {
 //        companion object : LongEntityClass<MusicState>(MusicStates)
 //        var guild       by GuildM referencedOn MusicStates.guild
 //        var channel     by MusicStates.channel
-//        var audioSource by MusicStates.audioSource
-//        var position    by MusicStates.position
 //        var paused      by MusicStates.paused
 //        var volume      by MusicStates.volume
-//        var lastUpdated by MusicStates.lastUpdated
 //    }
 
     fun user(user: User) = transaction(db) { UserM.find { UserMs.discordId eq user.idLong }.firstOrNull() ?: UserM.new { discordId = user.idLong; botAdmin = false } }
@@ -194,7 +210,7 @@ class ExposedDatabase(val db: Database) {
     fun findMute(user: User, guild: Guild): Mute? {
         return mutes(user, guild).firstOrNull()
     }
-//
+
 //    fun musicStates(guild: Guild): List<MusicState> {
 //        val guildm = guild(guild)
 //        return transaction(db) { MusicState.find { MusicStates.guild eq guildm.id }.toList() }
