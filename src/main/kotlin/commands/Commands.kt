@@ -18,12 +18,14 @@ import discord.Bot
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.MessageEmbed
+import net.dv8tion.jda.api.entities.MessageEmbed.Field
 import utils.admin
 import java.awt.Color
 import java.time.temporal.TemporalAccessor
 import kotlinx.coroutines.*
 import net.dv8tion.jda.api.audio.hooks.ConnectionListener
 import net.dv8tion.jda.api.audio.hooks.ConnectionStatus
+import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
@@ -43,21 +45,25 @@ class Commands(val bot: Bot) {
         commandResult.sender.channel.sendMessage(commandResult.value ?: return@CommandHandler).queue()
     }
 
+    // fun stripPings(inp: String) = inp.replace("@", "\\@")
+
+    fun String.stripPings() = this.replace("@", "\\@")
+
     private fun embed(title: String, url: String? = null, content: List<MessageEmbed.Field> = emptyList(), imgUrl: String? = null, thumbnail: String? = null, author: String? = null, authorUrl: String? = null, timestamp: TemporalAccessor? = null, color: Color? = null, description: String? = null): MessageEmbed {
         val builder = EmbedBuilder()
         builder.setTitle(title, url)
-        builder.fields.addAll(content)
+        builder.fields.addAll(content.map { Field(it.name?.stripPings(), it.value?.stripPings(), it.isInline) })
         builder.setImage(imgUrl)
         builder.setThumbnail(thumbnail)
         builder.setAuthor(author, authorUrl)
         builder.setTimestamp(timestamp)
         builder.setColor(color)
-        builder.setDescription(description)
+        builder.setDescription(description?.stripPings())
         return builder.build()
     }
 
     init {
-        class UserArg(name: String, optional: Boolean = false) : Argument<User>(User::class, { bot.jda.getUserById(it.removeSurrounding("<@", ">"))!! }, { bot.jda.retrieveUserById(it.removeSurrounding("<@", ">")).complete() != null }, name, optional)
+        class UserArg(name: String, optional: Boolean = false) : Argument<User>(User::class, { bot.jda.retrieveUserById(it.removeSurrounding("<@", ">")).complete()!! }, { bot.jda.retrieveUserById(it.removeSurrounding("<@", ">")).complete() != null }, name, optional)
 
         val unauthorized = EmbedBuilder().setTitle("Insufficient Permissions").setColor(Color(235, 70, 70)).build()
         handler.register(
@@ -302,33 +308,60 @@ class Commands(val bot: Bot) {
             return track?.tracks ?: emptyList()
         }
 
+        fun dispose(guild: Guild) {
+            guild.audioManager.closeAudioConnection()
+            for (state in bot.audio.currentlyPlaying.filter { it.channel.guild == guild }) {
+                bot.audio.currentlyPlaying.remove(state)
+                state.player.audioPlayer.destroy()
+            }
+        }
+
+        fun next(guild: Guild): Boolean {
+            val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == guild } ?: return false
+
+            state.next()
+            state.player.audioPlayer.playTrack(state.current() ?: run {
+                dispose(guild)
+                return false
+            })
+            return true
+        }
+
+        fun previous(guild: Guild): Boolean {
+            val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == guild } ?: return false
+
+            state.previous()
+            state.player.audioPlayer.playTrack(state.current()?.makeClone() ?: run {
+                dispose(guild)
+                return false
+            })
+            return true
+        }
+
         handler.register(
             CommandBuilder<Message, MessageEmbed>("play").args(StringArg("source"), StringArg("channel")).ran { sender, args ->
                 val channel = try { sender.guild.getVoiceChannelById((args["channel"] as String).removeSurrounding("<#", ">")) } catch (e: NumberFormatException) { null }
                     ?: sender.guild.getVoiceChannelsByName(args["channel"] as String, false).firstOrNull()
                     ?: return@ran InternalCommandResult(embed("Please specify a valid voice channel"), false)
 
-                bot.audio.currentlyPlaying.filter { it.channel == channel }.forEach {
-                    it.player.audioPlayer.destroy()
-                }
+                dispose(sender.guild)
+                delay(1000L)
                 val t = load(args["source"] as String).toMutableList()
                 if (t.isEmpty()) {
                     return@ran InternalCommandResult(embed("Failed to load '${args["source"]}'"), false)
                 }
 
                 val player = Audio.AudioPlayerSendHandler(bot.audio.playerManager.createPlayer())
-                val state = Audio.AudioState(channel, player, t)
+                val state = Audio.AudioState(channel, player, t, 0)
 
                 player.audioPlayer.addListener(object : AudioEventAdapter() {
                     override fun onTrackEnd(player: AudioPlayer?, track: AudioTrack?, endReason: AudioTrackEndReason?) {
                         if (endReason?.mayStartNext == true) {
-                            t.removeFirstOrNull()
-                            player?.playTrack(t.firstOrNull() ?: run {
-                                state.channel.guild.audioManager.closeAudioConnection()
-                                state.player.audioPlayer.destroy()
-                                bot.audio.currentlyPlaying.remove(state)
-                                return
-                            })
+                            if (!state.next()) {
+                                dispose(sender.guild)
+                            } else {
+                                dispose(sender.guild)
+                            }
                         }
                     }
                 })
@@ -340,7 +373,7 @@ class Commands(val bot: Bot) {
                         if (status == ConnectionStatus.CONNECTED) {
                             sender.guild.audioManager.isSelfDeafened = true
                             sender.guild.audioManager.sendingHandler = player
-                            player.audioPlayer.playTrack(t.first())
+                            player.audioPlayer.playTrack(state.current() ?: run { dispose(channel.guild); return })
                         }
                     }
 
@@ -348,7 +381,7 @@ class Commands(val bot: Bot) {
                     override fun onUserSpeaking(user: User, speaking: Boolean) {}
                 }
 
-                return@ran InternalCommandResult(embed("Playing ${t.firstOrNull()?.info?.title}"), true)
+                return@ran InternalCommandResult(embed("Playing ${state.playlist.firstOrNull()?.info?.title}"), true)
             }
         )
 
@@ -385,9 +418,7 @@ class Commands(val bot: Bot) {
             CommandBuilder<Message, MessageEmbed>("stop").ran { sender, _ ->
                 val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
 
-                sender.guild.audioManager.closeAudioConnection()
-                state.player.audioPlayer.destroy()
-                bot.audio.currentlyPlaying.remove(state)
+                dispose(sender.guild)
 
                 return@ran InternalCommandResult(embed("Stopped playing"), true)
             }
@@ -395,22 +426,19 @@ class Commands(val bot: Bot) {
 
         handler.register(
             CommandBuilder<Message, MessageEmbed>("skip", "next").ran { sender, args ->
-                val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
-
-                state.player.audioPlayer.startTrack(state.playlist.firstOrNull() ?: run {
-                    state.channel.guild.audioManager.closeAudioConnection()
-                    state.player.audioPlayer.destroy()
-                    bot.audio.currentlyPlaying.remove(state)
-                    return@ran InternalCommandResult(embed("Finished playlist"), true)
-                }, false)
-                return@ran InternalCommandResult(embed("Playing next"), true)
+                if (next(sender.guild)) {
+                    return@ran InternalCommandResult(embed("Playing next"), true)
+                } else {
+                    dispose(sender.guild)
+                    return@ran InternalCommandResult(embed("Nothing to play"), false)
+                }
             }
         )
 
         handler.register(
             CommandBuilder<Message, MessageEmbed>("queue").ran { sender, args ->
                 val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
-                return@ran InternalCommandResult(embed("Queue", content = state.playlist.take(5).mapIndexed { i, it -> MessageEmbed.Field("#$i: ${it.info.title}", it.info.author, false) }.reversed()), true)
+                return@ran InternalCommandResult(embed("Queue", content = state.playlist.drop(state.position).take(5).mapIndexed { i, it -> MessageEmbed.Field("#$i: ${it.info.title}", it.info.author, false) }.reversed()), true)
             }
         )
 
@@ -427,8 +455,8 @@ class Commands(val bot: Bot) {
         handler.register(
             CommandBuilder<Message, MessageEmbed>("dequeue", "remove", "delete").arg(IntArg("index")).ran { sender, args ->
                 val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
-                if (args["index"] !in state.playlist.indices) return@ran InternalCommandResult(embed("${args["index"]} is not a valid index"), false)
-                return@ran InternalCommandResult(embed("Successfully removed '${state.playlist.removeAt(args["index"] as Int).info.title}' from the playlist."), true)
+                if (args["index"] !in 0 until (state.playlist.size - state.position)) return@ran InternalCommandResult(embed("${args["index"]} is not a valid index"), false)
+                return@ran InternalCommandResult(embed("Successfully removed '${state.playlist.removeAt(args["index"] as Int - state.position).info.title}' from the playlist."), true)
             }
         )
 
@@ -436,7 +464,7 @@ class Commands(val bot: Bot) {
             CommandBuilder<Message, MessageEmbed>("status", "playing").ran { sender, args ->
                 val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
                 val length = 15
-                val timeFraction = state.player.audioPlayer.playingTrack.position / state.player.audioPlayer.playingTrack.duration.toDouble()
+                val timeFraction = (state.player.audioPlayer.playingTrack?.position ?: 0) / (state.player.audioPlayer.playingTrack?.duration?.toDouble() ?: 1.0)
                 val dashCount = floor(timeFraction * length).toInt()
                 val spaceCount = 4 * (length - dashCount)
                 val embed = embed("'${state.player.audioPlayer.playingTrack.info.title}' by ${state.player.audioPlayer.playingTrack.info.author}",
@@ -444,11 +472,29 @@ class Commands(val bot: Bot) {
 
                 val message = sender.channel.sendMessage(embed).complete()
 
-                message.addReaction("⏹️").queue { message.addReaction("⏯️").queue { message.addReaction("⏭️").queue() } }
+                message.addReaction("⏮️").queue { message.addReaction("⏹️").queue { message.addReaction("⏯️").queue { message.addReaction("⏭️").queue() } } }
                 bot.listeners.add(object : ListenerAdapter() {
                     override fun onMessageReactionAdd(event: MessageReactionAddEvent) {
+                        if (event.user == bot.jda.selfUser) return
                         if (event.messageId == message.id) {
-                            if (event.reaction)
+                            try {
+                                val c = event.reactionEmote.emoji
+                                when {
+                                    "⏹" in c -> {
+                                        dispose(sender.guild)
+                                    }
+                                    "⏯" in c -> {
+                                        state.player.audioPlayer.isPaused = !state.player.audioPlayer.isPaused
+                                    }
+                                    "⏭" in c -> {
+                                        next(sender.guild)
+                                    }
+                                    "⏮️" in c -> {
+                                        previous(sender.guild)
+                                    }
+                                }
+                            } catch (e: Exception) { e.printStackTrace() }
+                            event.retrieveMessage().complete().removeReaction(event.reactionEmote.asCodepoints, event.retrieveUser().complete()).queue()
                         }
                     }
                 }.apply { val s = this; Timer().schedule(60_000L) { bot.listeners.remove(s) } })

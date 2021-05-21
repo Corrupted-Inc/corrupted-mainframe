@@ -5,6 +5,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.jpa") version "1.4.32"
     id("org.jetbrains.kotlin.plugin.noarg") version "1.4.32"
     id("org.jetbrains.kotlin.plugin.allopen") version "1.4.32"
+    application
 }
 
 buildscript {
@@ -12,6 +13,10 @@ buildscript {
         classpath("org.jetbrains.kotlin:kotlin-noarg:1.4.32")
         classpath("org.jetbrains.kotlin:kotlin-allopen:1.4.32")
     }
+}
+
+application {
+    mainClass.set("MainKt")
 }
 
 allOpen {

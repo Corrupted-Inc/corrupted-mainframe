@@ -14,7 +14,12 @@ class Audio {
     val playerManager = DefaultAudioPlayerManager()
     val currentlyPlaying = mutableListOf<AudioState>()
 
-    data class AudioState(val channel: VoiceChannel, val player: AudioPlayerSendHandler, val playlist: MutableList<AudioTrack>)
+    data class AudioState(val channel: VoiceChannel, val player: AudioPlayerSendHandler, val playlist: MutableList<AudioTrack>, var position: Int) {
+        fun next() = position++ in playlist.indices
+        fun previous() = position-- in playlist.indices
+
+        fun current() = playlist.getOrNull(position)
+    }
 
     init {
         AudioSourceManagers.registerRemoteSources(playerManager)
