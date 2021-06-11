@@ -1,6 +1,7 @@
 package commands
 
 import audio.Audio
+import com.sedmelluq.discord.lavaplayer.filter.PcmFilterFactory
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer
 import com.sedmelluq.discord.lavaplayer.player.event.AudioEvent
@@ -30,14 +31,17 @@ import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import org.jetbrains.exposed.sql.transactions.transaction
+import utils.levenshtein
 import utils.toHumanReadable
 import java.lang.NumberFormatException
 import java.time.Duration
 import java.time.Instant
 import java.util.*
 import kotlin.concurrent.schedule
+import kotlin.coroutines.CoroutineContext
 import kotlin.math.floor
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import kotlin.random.Random
 
 class Commands(val bot: Bot) {
@@ -45,11 +49,13 @@ class Commands(val bot: Bot) {
         commandResult.sender.channel.sendMessage(commandResult.value ?: return@CommandHandler).queue()
     }
 
+    val context = CoroutineScope(Dispatchers.Default)
+
     // fun stripPings(inp: String) = inp.replace("@", "\\@")
 
     fun String.stripPings() = this.replace("@", "\\@")
 
-    private fun embed(title: String, url: String? = null, content: List<MessageEmbed.Field> = emptyList(), imgUrl: String? = null, thumbnail: String? = null, author: String? = null, authorUrl: String? = null, timestamp: TemporalAccessor? = null, color: Color? = null, description: String? = null): MessageEmbed {
+    private fun embed(title: String, url: String? = null, content: List<Field> = emptyList(), imgUrl: String? = null, thumbnail: String? = null, author: String? = null, authorUrl: String? = null, timestamp: TemporalAccessor? = null, color: Color? = null, description: String? = null): MessageEmbed {
         val builder = EmbedBuilder()
         builder.setTitle(title, url)
         builder.fields.addAll(content.map { Field(it.name?.stripPings(), it.value?.stripPings(), it.isInline) })
@@ -283,10 +289,10 @@ class Commands(val bot: Bot) {
             }
         )
 
-        suspend fun load(source: String): List<AudioTrack> {
+        suspend fun load(source: String, search: Boolean = false): List<AudioTrack> {
             var done = false
             var track: AudioPlaylist? = null
-            bot.audio.playerManager.loadItem(source, object : AudioLoadResultHandler {
+            bot.audio.playerManager.loadItem(if (search) "ytsearch:$source" else source, object : AudioLoadResultHandler {
                 override fun loadFailed(exception: FriendlyException?) {
                     done = true
                     track = null
@@ -347,13 +353,16 @@ class Commands(val bot: Bot) {
         handler.register(
             CommandBuilder<Message, MessageEmbed>("play").args(StringArg("source"), StringArg("channel", optional = true)).ran { sender, args ->
                 var channel = if (args["channel"] == null) sender.member?.voiceState?.channel else null
-                if (channel == null) channel = try { sender.guild.getVoiceChannelById((args["channel"] as String).removeSurrounding("<#", ">")) } catch (e: NumberFormatException) { null }
-                    ?: sender.guild.getVoiceChannelsByName(args["channel"] as String, false).firstOrNull()
-                    ?: return@ran InternalCommandResult(embed("Please specify a valid voice channel"), false)
+                if (channel == null) {
+                    val channelName = args["channel"] as String
+                    channel = try { sender.guild.getVoiceChannelById(channelName.removeSurrounding("<#", ">")) } catch (e: NumberFormatException) { null }
+                        ?: sender.guild.voiceChannels.minByOrNull { it.name.levenshtein(channelName) }
+                        ?: return@ran InternalCommandResult(embed("Please specify a valid voice channel"), false)
+                }
 
                 dispose(sender.guild)
                 delay(1000L)
-                val t = load(args["source"] as String).toMutableList()
+                val t = load(args["source"] as String, !(args["source"] as String).startsWith("http")).toMutableList()
                 if (t.isEmpty()) {
                     return@ran InternalCommandResult(embed("Failed to load '${args["source"]}'"), false)
                 }
@@ -389,13 +398,16 @@ class Commands(val bot: Bot) {
                     override fun onUserSpeaking(user: User, speaking: Boolean) {}
                 }
 
-                return@ran InternalCommandResult(embed("Playing ${state.playlist.firstOrNull()?.info?.title}"), true)
+                val first = state.playlist.firstOrNull()
+                return@ran InternalCommandResult(embed("Playing ${first?.info?.title}", url = first?.info?.uri), true)
             }
         )
 
+        fun state(sender: Message) = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }
+
         handler.register(
             CommandBuilder<Message, MessageEmbed>("pause").ran { sender, _ ->
-                val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
+                val state = state(sender) ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
 
                 state.player.audioPlayer.isPaused = true
                 return@ran InternalCommandResult(embed("Paused '${state.player.audioPlayer.playingTrack?.info?.title}'"), true)
@@ -453,7 +465,7 @@ class Commands(val bot: Bot) {
         handler.register(
             CommandBuilder<Message, MessageEmbed>("queue", "add").arg(StringArg("source")).ran { sender, args ->
                 val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
-                val loaded = load(args["source"] as String)
+                val loaded = load(args["source"] as String, !(args["source"] as String).startsWith("http"))
                 if (loaded.isEmpty()) return@ran InternalCommandResult(embed("Couldn't find '${args["source"] as String}'"), false)
                 state.playlist.addAll(state.playlist.size, loaded)
                 return@ran InternalCommandResult(embed("Successfully added ${loaded.size} items to the queue"), true)
@@ -513,7 +525,7 @@ class Commands(val bot: Bot) {
     }
 
     fun handle(message: Message) {
-        GlobalScope.launch {
+        context.launch {
             val prefix = bot.database.guild(message.guild).prefix
             handler.handleAndSend(prefix, message.contentRaw, message)
         }
