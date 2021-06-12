@@ -4,6 +4,8 @@ import audio.Audio
 import commands.Commands
 import core.Config
 import core.db.ExposedDatabase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent
@@ -22,8 +24,9 @@ class Bot(val config: Config) {
     val listeners = MultiListener()
     val startTime: Instant = Instant.now()
     val jda = JDABuilder.create(config.token, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS, GatewayIntent.GUILD_VOICE_STATES).addEventListeners(listeners).build()
+    val scope = CoroutineScope(Dispatchers.Default)
     val database = ExposedDatabase(Database.connect("jdbc:sqlite:database.db", driver = "org.sqlite.JDBC").apply { useNestedTransactions = true })
-    val audio = Audio()
+    val audio = Audio(this)
 
     init {
         listeners.add(object : ListenerAdapter() {

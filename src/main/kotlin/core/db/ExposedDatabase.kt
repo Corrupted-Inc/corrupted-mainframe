@@ -1,5 +1,6 @@
 package core.db
 
+import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.Role
 import net.dv8tion.jda.api.entities.User
@@ -15,7 +16,7 @@ import java.time.Instant
 class ExposedDatabase(val db: Database) {
     init {
         transaction(db) {
-            SchemaUtils.create(GuildMs, UserMs, GuildUsers, Mutes, MutedUserRoles, /*MusicStates*/)
+            SchemaUtils.create(GuildMs, UserMs, GuildUsers, Mutes, MutedUserRoles, MusicStates)
         }
     }
 
@@ -78,41 +79,45 @@ class ExposedDatabase(val db: Database) {
         var role by MutedUserRoles.role
     }
 
-//    /*
-//    * Needs to store:
-//    *  - Playlist position
-//    *  - Volume
-//    *  - Paused
-//    */
-//
-//    object PlaylistEntries : LongIdTable(name = "playlist_entries") {
-//        val state = reference("state", MusicStates)
-//        val audioSource = varchar("audioSource", 255)
-//        val position = long("position")
-//    }
-//
-//    class PlaylistEntry(id: EntityID<Long>) : LongEntity(id) {
-//        companion object : LongEntityClass<PlaylistEntry>(PlaylistEntries)
-//        var state       by PlaylistEntries.state
-//        var audioSource by PlaylistEntries.audioSource
-//        var position    by PlaylistEntries.position
-//    }
-//
-//    object MusicStates : LongIdTable(name = "music_states") {
-//        val guild = reference("guild", GuildMs)
-//        val channel = long("channel")
-//        val paused = bool("paused")
-//        val volume = double("volume")
-//        val playlist =
-//    }
-//
-//    class MusicState(id: EntityID<Long>) : LongEntity(id) {
-//        companion object : LongEntityClass<MusicState>(MusicStates)
-//        var guild       by GuildM referencedOn MusicStates.guild
-//        var channel     by MusicStates.channel
-//        var paused      by MusicStates.paused
-//        var volume      by MusicStates.volume
-//    }
+    /*
+    * Needs to store:
+    *  - Playlist position
+    *  - Volume
+    *  - Paused
+    */
+
+    object PlaylistEntries : LongIdTable(name = "playlist_entries") {
+        val state = reference("state", MusicStates)
+        val audioSource = varchar("audioSource", 255)
+        val position = long("position")
+    }
+
+    class PlaylistEntry(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<PlaylistEntry>(PlaylistEntries)
+        var state       by MusicState referencedOn PlaylistEntries.state
+        var audioSource by PlaylistEntries.audioSource
+        var position    by PlaylistEntries.position
+    }
+
+    object MusicStates : LongIdTable(name = "music_states") {
+        val guild = reference("guild", GuildMs)
+        val channel = long("channel")
+        val paused = bool("paused")
+        val volume = integer("volume")
+        val position = long("position")
+        val playlistPos = long("playlistPos")
+    }
+
+    class MusicState(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<MusicState>(MusicStates)
+        var guild       by GuildM referencedOn MusicStates.guild
+        var channel     by MusicStates.channel
+        var paused      by MusicStates.paused
+        var volume      by MusicStates.volume
+        var position    by MusicStates.position
+        var playlistPos by MusicStates.playlistPos
+        val items       by PlaylistEntry referrersOn PlaylistEntries.state
+    }
 
     fun user(user: User) = transaction(db) { UserM.find { UserMs.discordId eq user.idLong }.firstOrNull() ?: UserM.new { discordId = user.idLong; botAdmin = false } }
 
@@ -163,7 +168,7 @@ class ExposedDatabase(val db: Database) {
         val guildm = guild(guild)
 
         val previous = mutes(user, guild)
-        transaction {
+        transaction(db) {
             for (mute in previous) {
                 removeMute(mute)
             }
@@ -211,51 +216,99 @@ class ExposedDatabase(val db: Database) {
         return mutes(user, guild).firstOrNull()
     }
 
-//    fun musicStates(guild: Guild): List<MusicState> {
-//        val guildm = guild(guild)
-//        return transaction(db) { MusicState.find { MusicStates.guild eq guildm.id }.toList() }
-//    }
-//
-//    fun musicState(guild: Guild, channel: VoiceChannel): MusicState? {
-//        val guildm = guild(guild)
-//        return transaction(db) { MusicState.find { (MusicStates.guild eq guildm.id) and (MusicStates.channel eq channel.idLong) }.firstOrNull() }
-//    }
-//
-//    fun clearMusicState(state: MusicState) {
-//        transaction(db) { state.delete() }
-//    }
-//
-//    fun updateMusicState(state: MusicState, position: Double, paused: Boolean, volume: Double) {
-//        transaction(db) {
-//            state.position = position
-//            state.paused = paused
-//            state.volume = volume
-//            state.lastUpdated = Instant.now().epochSecond
-//        }
-//    }
-//
-//    fun updateMusicState(state: MusicState, paused: Boolean, volume: Double) {
-//        transaction(db) {
-//            val now = Instant.now().epochSecond
-//            state.position += now - state.lastUpdated
-//            state.lastUpdated = now
-//            state.paused = paused
-//            state.volume = volume
-//        }
-//    }
-//
-//    fun createMusicState(channel: VoiceChannel, source: String): MusicState {
-//        val guild = guild(channel.guild)
-//        return transaction(db) {
-//            MusicState.new {
-//                position = 0.0
-//                volume = 1.0
-//                paused = false
-//                audioSource = source
-//                this.guild = guild
-//                this.channel = channel.idLong
-//                lastUpdated = Instant.now().epochSecond
-//            }
-//        }
-//    }
+    fun musicStates(guild: Guild): List<MusicState> {
+        val guildm = guild(guild)
+        return transaction(db) { MusicState.find { MusicStates.guild eq guildm.id }.toList() }
+    }
+
+    fun musicState(guild: Guild, channel: VoiceChannel): MusicState? {
+        val guildm = guild(guild)
+        return transaction(db) { MusicState.find { (MusicStates.guild eq guildm.id) and (MusicStates.channel eq channel.idLong) }.firstOrNull() }
+    }
+
+    fun clearMusicState(state: MusicState) {
+        transaction(db) {
+            for (item in state.items) {
+                item.delete()
+            }
+            state.delete()
+        }
+    }
+
+    fun updateMusicState(state: MusicState, position: Long, paused: Boolean, volume: Int, playlistPos: Long) {
+        transaction(db) {
+            state.position = position
+            state.paused = paused
+            state.volume = volume
+            state.playlistPos = playlistPos
+        }
+    }
+
+    fun updateMusicState(state: MusicState, paused: Boolean, volume: Int, position: Long, playlistPos: Long) {
+        transaction(db) {
+            state.position = position
+            state.paused = paused
+            state.volume = volume
+            state.playlistPos = playlistPos
+        }
+    }
+
+    fun playlistItem(state: MusicState, position: Long): String? = transaction(db) { PlaylistEntry.find { (PlaylistEntries.state eq state.id) and (PlaylistEntries.position eq position) }.toList().firstOrNull()?.audioSource }
+
+    fun playlistItems(state: MusicState, range: LongRange): List<String> {
+        return transaction(db) {
+            PlaylistEntry.find {
+                (PlaylistEntries.state eq state.id) and
+                        (PlaylistEntries.position greaterEq range.first) and
+                        (PlaylistEntries.position lessEq range.last) }.toList().map { it.audioSource }
+        }
+    }
+
+    fun addPlaylistItem(state: MusicState, track: String): Long {
+        return transaction(db) {
+            val pos = state.items.maxOf { it.position } + 1
+            PlaylistEntry.new {
+                this.state = state
+                this.position = pos
+                this.audioSource = track
+            }
+            pos
+        }
+    }
+
+    fun createMusicState(channel: VoiceChannel, tracks: List<String>): MusicState {
+        val guild = guild(channel.guild)
+        return transaction(db) {
+            val state = MusicState.new {
+                position = 0L
+                playlistPos = 0L
+                volume = 100
+                paused = false
+                this.guild = guild
+                this.channel = channel.idLong
+            }
+
+            for ((index, track) in tracks.withIndex()) {
+                PlaylistEntry.new {
+                    this.state = state
+                    audioSource = track
+                    position = index.toLong()
+                }
+            }
+            return@transaction state
+        }
+    }
+
+    fun addPlaylistItems(state: MusicState, tracks: List<AudioTrack>) {
+        transaction(db) {
+            var pos = state.items.maxOf { it.position } + 1
+            for (t in tracks) {
+                PlaylistEntry.new {
+                    this.state = state
+                    this.position = pos++
+                    this.audioSource = t.identifier
+                }
+            }
+        }
+    }
 }

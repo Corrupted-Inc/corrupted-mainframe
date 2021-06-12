@@ -1,71 +1,54 @@
 package commands
 
-import audio.Audio
-import com.sedmelluq.discord.lavaplayer.filter.PcmFilterFactory
-import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler
-import com.sedmelluq.discord.lavaplayer.player.AudioPlayer
-import com.sedmelluq.discord.lavaplayer.player.event.AudioEvent
-import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter
-import com.sedmelluq.discord.lavaplayer.player.event.AudioEventListener
-import com.sedmelluq.discord.lavaplayer.player.event.TrackEndEvent
-import com.sedmelluq.discord.lavaplayer.tools.FriendlyException
-import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist
-import com.sedmelluq.discord.lavaplayer.track.AudioTrack
-import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
-import com.sedmelluq.discord.lavaplayer.track.BasicAudioPlaylist
 import commands.CommandHandler.*
 import commands.CommandHandler.Command.CommandBuilder
 import discord.Bot
+import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.MessageEmbed.Field
-import utils.admin
-import java.awt.Color
-import java.time.temporal.TemporalAccessor
-import kotlinx.coroutines.*
-import net.dv8tion.jda.api.audio.hooks.ConnectionListener
-import net.dv8tion.jda.api.audio.hooks.ConnectionStatus
-import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.User
-import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
-import net.dv8tion.jda.api.hooks.ListenerAdapter
 import org.jetbrains.exposed.sql.transactions.transaction
-import utils.levenshtein
+import utils.admin
 import utils.toHumanReadable
-import java.lang.NumberFormatException
+import java.awt.Color
 import java.time.Duration
 import java.time.Instant
-import java.util.*
-import kotlin.concurrent.schedule
-import kotlin.coroutines.CoroutineContext
-import kotlin.math.floor
-import kotlin.math.roundToInt
-import kotlin.math.roundToLong
+import java.time.temporal.TemporalAccessor
 import kotlin.random.Random
 
 class Commands(val bot: Bot) {
-    val handler = CommandHandler<Message, MessageEmbed> { commandResult ->
+    private val handler = CommandHandler<Message, MessageEmbed> { commandResult ->
         commandResult.sender.channel.sendMessage(commandResult.value ?: return@CommandHandler).queue()
     }
 
-    val context = CoroutineScope(Dispatchers.Default)
+    companion object {
+        private fun String.stripPings() = this.replace("@", "\\@")
 
-    // fun stripPings(inp: String) = inp.replace("@", "\\@")
-
-    fun String.stripPings() = this.replace("@", "\\@")
-
-    private fun embed(title: String, url: String? = null, content: List<Field> = emptyList(), imgUrl: String? = null, thumbnail: String? = null, author: String? = null, authorUrl: String? = null, timestamp: TemporalAccessor? = null, color: Color? = null, description: String? = null): MessageEmbed {
-        val builder = EmbedBuilder()
-        builder.setTitle(title, url)
-        builder.fields.addAll(content.map { Field(it.name?.stripPings(), it.value?.stripPings(), it.isInline) })
-        builder.setImage(imgUrl)
-        builder.setThumbnail(thumbnail)
-        builder.setAuthor(author, authorUrl)
-        builder.setTimestamp(timestamp)
-        builder.setColor(color)
-        builder.setDescription(description?.stripPings())
-        return builder.build()
+        fun embed(
+            title: String,
+            url: String? = null,
+            content: List<Field> = emptyList(),
+            imgUrl: String? = null,
+            thumbnail: String? = null,
+            author: String? = null,
+            authorUrl: String? = null,
+            timestamp: TemporalAccessor? = null,
+            color: Color? = null,
+            description: String? = null
+        ): MessageEmbed {
+            val builder = EmbedBuilder()
+            builder.setTitle(title, url)
+            builder.fields.addAll(content.map { Field(it.name?.stripPings(), it.value?.stripPings(), it.isInline) })
+            builder.setImage(imgUrl)
+            builder.setThumbnail(thumbnail)
+            builder.setAuthor(author, authorUrl)
+            builder.setTimestamp(timestamp)
+            builder.setColor(color)
+            builder.setDescription(description?.stripPings())
+            return builder.build()
+        }
     }
 
     init {
@@ -73,7 +56,7 @@ class Commands(val bot: Bot) {
 
         val unauthorized = EmbedBuilder().setTitle("Insufficient Permissions").setColor(Color(235, 70, 70)).build()
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("help", "commands").arg(IntArg("page", true)).ran { sender, args ->
+            CommandBuilder<Message, MessageEmbed>("help", "commands").arg(IntArg("page", true)).ran { _, args ->
                 var page = args.getOrDefault("page", 1) as Int - 1
                 val list = handler.commands.sortedBy { it.base.contains("help") }.chunked(10)
                 if (page !in list.indices) page = 0
@@ -141,10 +124,10 @@ class Commands(val bot: Bot) {
             CommandBuilder<Message, MessageEmbed>("slots", "gamble").ran { sender, _ ->
                 val emotes = ":cherries:, :lemon:, :seven:, :broccoli:, :peach:, :green_apple:".split(", ")
 
-                val numberCorrect = /*weightedRandom(
-                    listOf(1,     2,     3,     4,     5,      6),
-                    listOf(0.6,   0.2,   0.15,  0.03,  0.0199, 0.000001)
-                )*/ Random.nextInt(1, 6)
+//                val numberCorrect = /*weightedRandom(
+//                    listOf(1,     2,     3,     4,     5,      6),
+//                    listOf(0.6,   0.2,   0.15,  0.03,  0.0199, 0.000001)
+//                )*/ Random.nextInt(1, 6)
 
                 fun section(count: Int, index: Int): List<String> {
                     return emotes.plus(emotes).slice(index..(index + emotes.size)).take(count)
@@ -289,243 +272,11 @@ class Commands(val bot: Bot) {
             }
         )
 
-        suspend fun load(source: String, search: Boolean = false): List<AudioTrack> {
-            var done = false
-            var track: AudioPlaylist? = null
-            bot.audio.playerManager.loadItem(if (search) "ytsearch:$source" else source, object : AudioLoadResultHandler {
-                override fun loadFailed(exception: FriendlyException?) {
-                    done = true
-                    track = null
-                }
-
-                override fun trackLoaded(track1: AudioTrack?) {
-                    done = true
-                    track = BasicAudioPlaylist("playlist", listOf(track1), track1, false)
-                }
-
-                override fun noMatches() {
-                    done = true
-                    track = null
-                }
-
-                override fun playlistLoaded(playlist: AudioPlaylist?) {
-                    done = true
-                    track = playlist
-                }
-            })
-
-            while (!done) {
-                delay(50L)
-            }
-            return track?.tracks ?: emptyList()
-        }
-
-        fun dispose(guild: Guild) {
-            guild.audioManager.closeAudioConnection()
-            for (state in bot.audio.currentlyPlaying.filter { it.channel.guild == guild }) {
-                bot.audio.currentlyPlaying.remove(state)
-                state.player.audioPlayer.destroy()
-            }
-        }
-
-        fun next(guild: Guild): Boolean {
-            val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == guild } ?: return false
-
-            state.next()
-            state.player.audioPlayer.playTrack(state.current() ?: run {
-                dispose(guild)
-                return false
-            })
-            return true
-        }
-
-        fun previous(guild: Guild): Boolean {
-            val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == guild } ?: return false
-
-            state.previous()
-            state.player.audioPlayer.playTrack(state.current()?.makeClone() ?: run {
-                dispose(guild)
-                return false
-            })
-            return true
-        }
-
-        handler.register(
-            CommandBuilder<Message, MessageEmbed>("play").args(StringArg("source"), StringArg("channel", optional = true)).ran { sender, args ->
-                var channel = if (args["channel"] == null) sender.member?.voiceState?.channel else null
-                if (channel == null) {
-                    val channelName = args["channel"] as String
-                    channel = try { sender.guild.getVoiceChannelById(channelName.removeSurrounding("<#", ">")) } catch (e: NumberFormatException) { null }
-                        ?: sender.guild.voiceChannels.minByOrNull { it.name.levenshtein(channelName) }
-                        ?: return@ran InternalCommandResult(embed("Please specify a valid voice channel"), false)
-                }
-
-                dispose(sender.guild)
-                delay(1000L)
-                val t = load(args["source"] as String, !(args["source"] as String).startsWith("http")).toMutableList()
-                if (t.isEmpty()) {
-                    return@ran InternalCommandResult(embed("Failed to load '${args["source"]}'"), false)
-                }
-
-                val player = Audio.AudioPlayerSendHandler(bot.audio.playerManager.createPlayer())
-//                val musicState = bot.database.createMusicState(channel, )
-                val state = Audio.AudioState(channel, player, t, 0)
-
-                player.audioPlayer.addListener(object : AudioEventAdapter() {
-                    override fun onTrackEnd(player: AudioPlayer?, track: AudioTrack?, endReason: AudioTrackEndReason?) {
-                        if (endReason?.mayStartNext == true) {
-                            if (!state.next()) {
-                                dispose(sender.guild)
-                            } else {
-                                dispose(sender.guild)
-                            }
-                        }
-                    }
-                })
-                bot.audio.currentlyPlaying.add(state)
-
-                sender.guild.audioManager.openAudioConnection(channel)
-                sender.guild.audioManager.connectionListener = object : ConnectionListener {
-                    override fun onStatusChange(status: ConnectionStatus) {
-                        if (status == ConnectionStatus.CONNECTED) {
-                            sender.guild.audioManager.isSelfDeafened = true
-                            sender.guild.audioManager.sendingHandler = player
-                            player.audioPlayer.playTrack(state.current() ?: run { dispose(channel.guild); return })
-                        }
-                    }
-
-                    override fun onPing(ping: Long) {}
-                    override fun onUserSpeaking(user: User, speaking: Boolean) {}
-                }
-
-                val first = state.playlist.firstOrNull()
-                return@ran InternalCommandResult(embed("Playing ${first?.info?.title}", url = first?.info?.uri), true)
-            }
-        )
-
-        fun state(sender: Message) = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }
-
-        handler.register(
-            CommandBuilder<Message, MessageEmbed>("pause").ran { sender, _ ->
-                val state = state(sender) ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
-
-                state.player.audioPlayer.isPaused = true
-                return@ran InternalCommandResult(embed("Paused '${state.player.audioPlayer.playingTrack?.info?.title}'"), true)
-            }
-        )
-
-        handler.register(
-            CommandBuilder<Message, MessageEmbed>("resume", "play").ran { sender, _ ->
-                val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
-
-                state.player.audioPlayer.isPaused = false
-                return@ran InternalCommandResult(embed("Resumed '${state.player.audioPlayer.playingTrack?.info?.title}'"), true)
-            }
-        )
-
-        handler.register(
-            CommandBuilder<Message, MessageEmbed>("volume", "vol").arg(IntArg("volume")).ran { sender, args ->
-                val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
-
-                val vol = (args["volume"] as Int).coerceIn(0, 200)
-
-                state.player.audioPlayer.volume = vol
-                return@ran InternalCommandResult(embed("Set volume to $vol%"), true)
-            }
-        )
-
-        handler.register(
-            CommandBuilder<Message, MessageEmbed>("stop").ran { sender, _ ->
-                val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
-
-                dispose(sender.guild)
-
-                return@ran InternalCommandResult(embed("Stopped playing"), true)
-            }
-        )
-
-        handler.register(
-            CommandBuilder<Message, MessageEmbed>("skip", "next").ran { sender, args ->
-                if (next(sender.guild)) {
-                    return@ran InternalCommandResult(embed("Playing next"), true)
-                } else {
-                    dispose(sender.guild)
-                    return@ran InternalCommandResult(embed("Nothing to play"), false)
-                }
-            }
-        )
-
-        handler.register(
-            CommandBuilder<Message, MessageEmbed>("queue").ran { sender, args ->
-                val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
-                return@ran InternalCommandResult(embed("Queue", content = state.playlist.drop(state.position).take(5).mapIndexed { i, it -> MessageEmbed.Field("#$i: ${it.info.title}", it.info.author, false) }.reversed()), true)
-            }
-        )
-
-        handler.register(
-            CommandBuilder<Message, MessageEmbed>("queue", "add").arg(StringArg("source")).ran { sender, args ->
-                val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
-                val loaded = load(args["source"] as String, !(args["source"] as String).startsWith("http"))
-                if (loaded.isEmpty()) return@ran InternalCommandResult(embed("Couldn't find '${args["source"] as String}'"), false)
-                state.playlist.addAll(state.playlist.size, loaded)
-                return@ran InternalCommandResult(embed("Successfully added ${loaded.size} items to the queue"), true)
-            }
-        )
-
-        handler.register(
-            CommandBuilder<Message, MessageEmbed>("dequeue", "remove", "delete").arg(IntArg("index")).ran { sender, args ->
-                val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
-                if (args["index"] !in 0 until (state.playlist.size - state.position)) return@ran InternalCommandResult(embed("${args["index"]} is not a valid index"), false)
-                return@ran InternalCommandResult(embed("Successfully removed '${state.playlist.removeAt(args["index"] as Int - state.position).info.title}' from the playlist."), true)
-            }
-        )
-
-        handler.register(
-            CommandBuilder<Message, MessageEmbed>("status", "playing").ran { sender, args ->
-                val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild } ?: return@ran InternalCommandResult(embed("Nothing playing"), false)
-                val length = 15
-                val timeFraction = (state.player.audioPlayer.playingTrack?.position ?: 0) / (state.player.audioPlayer.playingTrack?.duration?.toDouble() ?: 1.0)
-                val dashCount = floor(timeFraction * length).toInt()
-                val spaceCount = 4 * (length - dashCount)
-                val embed = embed("'${state.player.audioPlayer.playingTrack.info.title}' by ${state.player.audioPlayer.playingTrack.info.author}",
-                        description = "|${":heavy_minus_sign:".repeat(dashCount)}:radio_button:${"-".repeat(spaceCount)}|")
-
-                val message = sender.channel.sendMessage(embed).complete()
-
-                message.addReaction("⏮️").queue { message.addReaction("⏹️").queue { message.addReaction("⏯️").queue { message.addReaction("⏭️").queue() } } }
-                bot.listeners.add(object : ListenerAdapter() {
-                    override fun onMessageReactionAdd(event: MessageReactionAddEvent) {
-                        if (event.user == bot.jda.selfUser) return
-                        if (event.messageId == message.id) {
-                            try {
-                                val c = event.reactionEmote.emoji
-                                when {
-                                    "⏹" in c -> {
-                                        dispose(sender.guild)
-                                    }
-                                    "⏯" in c -> {
-                                        state.player.audioPlayer.isPaused = !state.player.audioPlayer.isPaused
-                                    }
-                                    "⏭" in c -> {
-                                        next(sender.guild)
-                                    }
-                                    "⏮️" in c -> {
-                                        previous(sender.guild)
-                                    }
-                                }
-                            } catch (e: Exception) { e.printStackTrace() }
-                            event.retrieveMessage().complete().removeReaction(event.reactionEmote.asCodepoints, event.retrieveUser().complete()).queue()
-                        }
-                    }
-                }.apply { val s = this; Timer().schedule(60_000L) { bot.listeners.remove(s) } })
-
-                return@ran InternalCommandResult(null, true)
-            }
-        )
+        registerAudioCommands(bot, handler)
     }
 
     fun handle(message: Message) {
-        context.launch {
+        bot.scope.launch {
             val prefix = bot.database.guild(message.guild).prefix
             handler.handleAndSend(prefix, message.contentRaw, message)
         }
