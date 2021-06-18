@@ -25,10 +25,15 @@ class Bot(val config: Config) {
     val startTime: Instant = Instant.now()
     val jda = JDABuilder.create(config.token, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS, GatewayIntent.GUILD_VOICE_STATES).addEventListeners(listeners).build()
     val scope = CoroutineScope(Dispatchers.Default)
-    val database = ExposedDatabase(Database.connect("jdbc:sqlite:database.db", driver = "org.sqlite.JDBC").apply { useNestedTransactions = true })
+    val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver).apply { useNestedTransactions = true })
     val audio = Audio(this)
 
     init {
+        Runtime.getRuntime().addShutdownHook(Thread {
+            logger.info("Saving audio state to database...")
+            audio.gracefulShutdown()
+            logger.info("Finished, exiting")
+        })
         listeners.add(object : ListenerAdapter() {
             override fun onReady(event: ReadyEvent) {
                 logger.info("Logged in as ${event.jda.selfUser.asTag}")

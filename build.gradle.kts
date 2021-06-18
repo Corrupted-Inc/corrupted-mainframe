@@ -56,6 +56,7 @@ dependencies {
     implementation(group = "org.jetbrains.exposed", name = "exposed-dao", version = "0.31.1")
     implementation(group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "0.31.1")
     implementation("com.sedmelluq:lavaplayer:1.3.76")
+    implementation("com.google.guava:guava:30.1.1-jre")
 }
 
 tasks.test {

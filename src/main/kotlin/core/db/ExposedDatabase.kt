@@ -16,7 +16,7 @@ import java.time.Instant
 class ExposedDatabase(val db: Database) {
     init {
         transaction(db) {
-            SchemaUtils.create(GuildMs, UserMs, GuildUsers, Mutes, MutedUserRoles, MusicStates)
+            SchemaUtils.create(GuildMs, UserMs, GuildUsers, Mutes, MutedUserRoles, MusicStates, PlaylistEntries)
         }
     }
 
@@ -216,6 +216,8 @@ class ExposedDatabase(val db: Database) {
         return mutes(user, guild).firstOrNull()
     }
 
+    fun musicStates() = transaction(db) { MusicState.all().toList() }
+
     fun musicStates(guild: Guild): List<MusicState> {
         val guildm = guild(guild)
         return transaction(db) { MusicState.find { MusicStates.guild eq guildm.id }.toList() }
@@ -306,7 +308,7 @@ class ExposedDatabase(val db: Database) {
                 PlaylistEntry.new {
                     this.state = state
                     this.position = pos++
-                    this.audioSource = t.identifier
+                    this.audioSource = t.info.uri
                 }
             }
         }

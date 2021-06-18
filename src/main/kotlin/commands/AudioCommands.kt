@@ -14,7 +14,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.audio.hooks.ConnectionListener
 import net.dv8tion.jda.api.audio.hooks.ConnectionStatus
-import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.User
@@ -28,7 +27,7 @@ import kotlin.math.floor
 
 fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbed>) {
 
-    fun state(sender: Message) = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }
+    fun state(sender: Message) = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }.apply { println(bot.audio.currentlyPlaying.map { it.channel }) }
 
     suspend fun next(message: Message) = state(message)?.next() ?: false
 
@@ -36,6 +35,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
 
     handler.register(
         CommandBuilder<Message, MessageEmbed>("play").args(StringArg("source"), StringArg("channel", optional = true))
+            .help("Plays a song.  Give the URL/name in double quotes, and optionally the voice channel name in double quotes.")
             .ran { sender, args ->
                 var channel = if (args["channel"] == null) sender.member?.voiceState?.channel else null
                 if (channel == null) {
@@ -94,7 +94,9 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("pause").ran { sender, _ ->
+        CommandBuilder<Message, MessageEmbed>("pause")
+            .help("Pauses the current song.")
+            .ran { sender, _ ->
             val state = state(sender) ?: return@ran CommandHandler.InternalCommandResult(embed("Nothing playing"), false)
 
             state.paused = true
@@ -106,7 +108,9 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("resume", "play").ran { sender, _ ->
+        CommandBuilder<Message, MessageEmbed>("resume", "play")
+            .help("Unpauses the current song.")
+            .ran { sender, _ ->
             val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }
                 ?: return@ran CommandHandler.InternalCommandResult(
                     embed("Nothing playing"),
@@ -122,7 +126,9 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("volume", "vol").arg(IntArg("volume")).ran { sender, args ->
+        CommandBuilder<Message, MessageEmbed>("volume", "vol").arg(IntArg("volume"))
+            .help("Sets the volume of the current song.  Must be an integer between 0 and 200.")
+            .ran { sender, args ->
             val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }
                 ?: return@ran CommandHandler.InternalCommandResult(
                     embed("Nothing playing"),
@@ -137,7 +143,9 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("stop").ran { sender, _ ->
+        CommandBuilder<Message, MessageEmbed>("stop")
+            .help("Stops playing the current song and deletes the playlist.")
+            .ran { sender, _ ->
             state(sender)?.destroy() ?: return@ran CommandHandler.InternalCommandResult(
                     embed("Nothing playing"),
                     false
@@ -148,7 +156,9 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("skip", "next").ran { sender, _ ->
+        CommandBuilder<Message, MessageEmbed>("skip", "next")
+            .help("Skips to the next song, and stops playing if there are no more.")
+            .ran { sender, _ ->
             if (next(sender)) {
                 return@ran CommandHandler.InternalCommandResult(embed("Playing next"), true)
             } else {
@@ -158,7 +168,9 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("back", "prev", "previous").ran { sender, _ ->
+        CommandBuilder<Message, MessageEmbed>("back", "prev", "previous", "replay")
+            .help("Replays the last song.  If this is the first song, stops playing.")
+            .ran { sender, _ ->
             if (previous(sender)) {
                 return@ran CommandHandler.InternalCommandResult(embed("Playing last"), true)
             } else {
@@ -168,7 +180,9 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("queue").ran { sender, _ ->
+        CommandBuilder<Message, MessageEmbed>("queue")
+            .help("Shows the queue.")
+            .ran { sender, _ ->
             val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }
                 ?: return@ran CommandHandler.InternalCommandResult(
                     embed("Nothing playing"),
@@ -177,7 +191,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
             return@ran CommandHandler.InternalCommandResult(
                 embed(
                     "Queue",
-                    content = state.range((state.position - 5)..state.position)
+                    content = state.range(state.playlistPos..(state.playlistPos + 5))
                         .mapIndexedNotNull { i, it ->
                             val loaded = bot.audio.load(it).firstOrNull() ?: return@mapIndexedNotNull null
                             MessageEmbed.Field("#$i: ${loaded.info.title}", loaded.info.author, false)
@@ -189,7 +203,9 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("queue", "add").arg(StringArg("source")).ran { sender, args ->
+        CommandBuilder<Message, MessageEmbed>("queue", "add").arg(StringArg("source"))
+            .help("Adds a song (by double-quoted name or url) to the end of the playlist.")
+            .ran { sender, args ->
             val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }
                 ?: return@ran CommandHandler.InternalCommandResult(
                     embed("Nothing playing"),
@@ -228,9 +244,10 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
 //    )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("status", "playing").ran { sender, _ ->
-            val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }
-                ?: return@ran CommandHandler.InternalCommandResult(
+        CommandBuilder<Message, MessageEmbed>("status", "playing")
+            .help("Shows the music status with reaction controls.")
+            .ran { sender, _ ->
+            val state = state(sender) ?: return@ran CommandHandler.InternalCommandResult(
                     embed("Nothing playing"),
                     false
                 )
@@ -240,7 +257,8 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
             val spaceCount = 4 * (length - dashCount)
             val embed = embed(
                 "'${state.currentlyPlayingTrack?.info?.title}' by ${state.currentlyPlayingTrack?.info?.author}",
-                description = "|${":heavy_minus_sign:".repeat(dashCount)}:radio_button:${"-".repeat(spaceCount)}|"
+                description = "|${":heavy_minus_sign:".repeat(dashCount)}:radio_button:${"-".repeat(spaceCount)}|",
+                imgUrl = if (state.currentlyPlayingTrack?.info?.uri?.startsWith("https://youtube.com/watch?v=") == true) "https://img.youtube.com/vi/${state.currentlyPlayingTrack?.info?.uri?.substringAfterLast("?v=")}/maxresdefault.jpg" else null
             )
 
             val message = sender.channel.sendMessage(embed).complete()

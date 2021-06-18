@@ -56,7 +56,8 @@ class Commands(val bot: Bot) {
 
         val unauthorized = EmbedBuilder().setTitle("Insufficient Permissions").setColor(Color(235, 70, 70)).build()
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("help", "commands").arg(IntArg("page", true)).ran { _, args ->
+            CommandBuilder<Message, MessageEmbed>("help", "commands").arg(IntArg("page", true))
+                .ran { _, args ->
                 var page = args.getOrDefault("page", 1) as Int - 1
                 val list = handler.commands.sortedBy { it.base.contains("help") }.chunked(10)
                 if (page !in list.indices) page = 0
@@ -73,7 +74,9 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("stats").ran { sender, _ ->
+            CommandBuilder<Message, MessageEmbed>("stats")
+                .help("Shows bot statistics")
+                .ran { sender, _ ->
                 val builder = EmbedBuilder()
                 builder.setTitle("Statistics and Info")
                 builder.setThumbnail(sender.guild.iconUrl)
@@ -91,7 +94,9 @@ class Commands(val bot: Bot) {
 
         val administration = CommandCategory("Administration", mutableListOf())
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("ban").arg(StringArg("user id")).ran { sender, args ->
+            CommandBuilder<Message, MessageEmbed>("ban").arg(StringArg("user id"))
+                .help("Bans a user.")
+                .ran { sender, args ->
                 val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
                 val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
@@ -101,7 +106,9 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("unban").arg(StringArg("user id")).ran { sender, args ->
+            CommandBuilder<Message, MessageEmbed>("unban").arg(StringArg("user id"))
+                .help("Unbans a user.")
+                .ran { sender, args ->
                 val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
                 val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
@@ -111,7 +118,9 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("kick").arg(StringArg("user id")).ran { sender, args ->
+            CommandBuilder<Message, MessageEmbed>("kick").arg(StringArg("user id"))
+                .help("Kicks a user.")
+                .ran { sender, args ->
                 val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
                 val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
@@ -121,7 +130,9 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("slots", "gamble").ran { sender, _ ->
+            CommandBuilder<Message, MessageEmbed>("slots", "gamble")
+                .help("Play the slots.")
+                .ran { sender, _ ->
                 val emotes = ":cherries:, :lemon:, :seven:, :broccoli:, :peach:, :green_apple:".split(", ")
 
 //                val numberCorrect = /*weightedRandom(
@@ -151,7 +162,9 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("trace", "lookup").arg(UserArg("ID")).ran { sender, args ->
+            CommandBuilder<Message, MessageEmbed>("trace", "lookup").arg(UserArg("ID"))
+                .help("Shows information about a user.")
+                .ran { sender, args ->
                 val user = args["ID"] as User
                 val botAdmin = bot.database.user(sender.author).botAdmin
                 val isAdmin = sender.member.admin || botAdmin
@@ -193,7 +206,9 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("prefix", "setprefix").arg(StringArg("prefix")).ran { sender, args ->
+            CommandBuilder<Message, MessageEmbed>("prefix", "setprefix").arg(StringArg("prefix"))
+                .help("Sets the bot's prefix.")
+                .ran { sender, args ->
                 val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
 
@@ -210,7 +225,9 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("admin").arg(UserArg("user")).ran { sender, args ->
+            CommandBuilder<Message, MessageEmbed>("admin").arg(UserArg("user"))
+                .help("Makes a user a bot admin.")
+                .ran { sender, args ->
                 val isAdmin = bot.database.user(sender.author).botAdmin || bot.config.permaAdmins.contains(sender.author.id)
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
 
@@ -223,7 +240,9 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("unadmin", "deadmin").arg(UserArg("user")).ran { sender, args ->
+            CommandBuilder<Message, MessageEmbed>("unadmin", "deadmin").arg(UserArg("user"))
+                .help("Removes a user's bot admin status.")
+                .ran { sender, args ->
                 val isAdmin = bot.database.user(sender.author).botAdmin || bot.config.permaAdmins.contains(sender.author.id)
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
 
@@ -238,13 +257,15 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("mute").args(UserArg("user"), IntArg("seconds")).ran { sender, args ->
+            CommandBuilder<Message, MessageEmbed>("mute").args(UserArg("user"), LongArg("seconds"))
+                .help("Mutes a user (prevents them from sending messages) for the given time in seconds.")
+                .ran { sender, args ->
                 val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
 
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
 
                 val user = args["user"] as User
-                val time = (args["seconds"] as Int).coerceAtLeast(15)
+                val time = (args["seconds"] as Long).coerceAtLeast(15)
                 val member = sender.guild.getMember(user) ?: return@ran InternalCommandResult(embed("Must be a member of this server"), false)
 
                 val end = Instant.now().plusSeconds(time.toLong())
@@ -257,7 +278,9 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
-            CommandBuilder<Message, MessageEmbed>("unmute").args(UserArg("user")).ran { sender, args ->
+            CommandBuilder<Message, MessageEmbed>("unmute").args(UserArg("user"))
+                .help("Ends a mute.")
+                .ran { sender, args ->
                 val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
 
                 if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
