@@ -13,7 +13,7 @@ jobs:
         with:
           java-version: 14
       - name: Build
-        run |
+        run: |
           echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
           ./gradlew jar
       - name: Release
