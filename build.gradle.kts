@@ -50,6 +50,7 @@ dependencies {
     implementation("net.dv8tion:JDA:4.3.0_280")
     implementation(group = "com.beust", name = "klaxon", version = "5.5")
     implementation(group = "org.xerial", name = "sqlite-jdbc", version = "3.34.0")
+    implementation(group = "org.postgresql", name = "postgresql", version = "42.2.16")
     implementation(group = "org.apache.logging.log4j", name = "log4j", version = "2.14.1")
     implementation(group = "org.slf4j", name = "slf4j-log4j12", version = "1.7.30")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.4.3")
