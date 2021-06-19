@@ -58,7 +58,7 @@ class Commands(val bot: Bot) {
     }
 
     init {
-        class UserArg(name: String, optional: Boolean = false, vararg: Boolean = false) : Argument<User>(User::class, { bot.jda.retrieveUserById(it.removeSurrounding("<@", ">")).complete()!! }, { bot.jda.retrieveUserById(it.removeSurrounding("<@", ">")).complete() != null }, name, optional, vararg)
+        class UserArg(name: String, optional: Boolean = false, vararg: Boolean = false) : Argument<User>(User::class, { bot.jda.retrieveUserById(it.removeSurrounding("<@!", ">")).complete()!! }, { bot.jda.retrieveUserById(it.removeSurrounding("<@!", ">")).complete() != null }, name, optional, vararg)
 
         val unauthorized = EmbedBuilder().setTitle("Insufficient Permissions").setColor(Color(235, 70, 70)).build()
         handler.register(
@@ -216,11 +216,11 @@ class Commands(val bot: Bot) {
             CommandBuilder<Message, MessageEmbed>("ban").arg(StringArg("user id"))
                 .help("Bans a user.")
                 .ran { sender, args ->
-                    val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
+                    val id = (args["user id"] as String).removeSurrounding(prefix = "<@!", suffix = ">")
                     val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
                     if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
                     sender.guild.ban(id, 0).complete()
-                    return@ran InternalCommandResult(embed("Banned", description = "Banned <@$id>"), true)
+                    return@ran InternalCommandResult(embed("Banned", description = "Banned <@!$id>"), true)
                 }.category(administration)
         )
 
@@ -228,11 +228,11 @@ class Commands(val bot: Bot) {
             CommandBuilder<Message, MessageEmbed>("unban").arg(StringArg("user id"))
                 .help("Unbans a user.")
                 .ran { sender, args ->
-                    val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
+                    val id = (args["user id"] as String).removeSurrounding(prefix = "<@!", suffix = ">")
                     val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
                     if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
                     sender.guild.unban(id).complete()
-                    return@ran InternalCommandResult(embed("Unbanned", description = "Unbanned <@$id>"), true)
+                    return@ran InternalCommandResult(embed("Unbanned", description = "Unbanned <@!$id>"), true)
                 }.category(administration)
         )
 
@@ -240,11 +240,11 @@ class Commands(val bot: Bot) {
             CommandBuilder<Message, MessageEmbed>("kick").arg(StringArg("user id"))
                 .help("Kicks a user.")
                 .ran { sender, args ->
-                    val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
+                    val id = (args["user id"] as String).removeSurrounding(prefix = "<@!", suffix = ">")
                     val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
                     if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
                     sender.guild.kick(id).complete()
-                    return@ran InternalCommandResult(embed("Kicked", description = "Kicked <@$id>"), true)
+                    return@ran InternalCommandResult(embed("Kicked", description = "Kicked <@!$id>"), true)
                 }.category(administration)
         )
 
@@ -419,8 +419,13 @@ class Commands(val bot: Bot) {
 
     fun handle(message: Message) {
         bot.scope.launch {
-            val prefix = bot.database.guild(message.guild).prefix
-            handler.handleAndSend(prefix, message.contentRaw, message)
+            try {
+                val prefix = bot.database.guild(message.guild).prefix
+                handler.handleAndSend(prefix, message.contentRaw, message)
+            } catch (e: Exception) {
+                bot.log.warning("ERROR FROM COMMAND '${message.contentRaw}':")
+                bot.log.warning(e.stackTraceToString())
+            }
         }
     }
 }

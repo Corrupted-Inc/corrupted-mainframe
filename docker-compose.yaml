@@ -3,21 +3,18 @@ services:
   db:
     image: postgres
     restart: always
-#    environment:
-#      POSTGRES_PASSWORD: "${DB_PASSWORD}"  # Provide the DB_PASSWORD env. var. when running the container, should be the same as in the config
-#      # TODO: get password from config?
+    environment:
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"  # Provide the DB_PASSWORD env. var. when running the container, should be the same as in the config
+      # TODO: get password from config?
+      POSTGRES_USER: "postgres"
     volumes:
       - pgdata:/var/lib/postgresql/data  # Mount postgres persistent volume to postgres's data directory
-    ports:
-      - "8000:8000"
 
   bot:
     image: openjdk:14
     command: bash -c "cd /root/; curl -L https://github.com/Corrupted-Inc/corrupted-mainframe/releases/latest/download/corrupted-mainframe.jar > corrupted-mainframe.jar; java -jar corrupted-mainframe.jar"
     volumes:
       - ./config.json/:/root/config.json
-    ports:
-      - "8001:5432"
 
 volumes:
   pgdata:  # Postgres volume
