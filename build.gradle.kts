@@ -26,7 +26,7 @@ allOpen {
 }
 
 group = "com.github.blahblahbloopster"
-version = "1.0-SNAPSHOT"
+version = ""
 
 sourceSets.main {
     java.srcDirs("src/main/kotlin")
@@ -62,6 +62,15 @@ dependencies {
 tasks.test {
     useJUnit()
 //    useJUnitPlatform()
+}
+
+tasks.jar {
+    archiveBaseName.set("corrupted-mainframe")
+    from(configurations.runtimeClasspath.get().filter { !it.path.endsWith(".pom") }.map { if (it.isDirectory) it else zipTree(it) })
+
+    manifest {
+        attributes["Main-Class"] = "MainKt"
+    }
 }
 
 tasks.withType<KotlinCompile> {
