@@ -120,6 +120,15 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
+            CommandBuilder<Message, MessageEmbed>("invite").ran { _, _ ->
+                return@ran InternalCommandResult(embed("Invite Link",
+                    description = "Admin invite: https://discord.com/api/oauth2/authorize?client_id=${bot.jda.selfUser.id}&permissions=8&scope=bot\n" +
+                            "Basic permissions: https://discord.com/api/oauth2/authorize?client_id=${bot.jda.selfUser.id}&permissions=271830080&scope=bot"
+                ), true)
+            }
+        )
+
+        handler.register(
             CommandBuilder<Message, MessageEmbed>("reactionrole").args(StringArg("message link"), StringArg("reactions", vararg = true))
                 .help("Takes a message link and a space-separated list following the format \"emote name:role name\" (including the quotes)")
                 .ran { sender, args ->
@@ -184,19 +193,22 @@ class Commands(val bot: Bot) {
             CommandBuilder<Message, MessageEmbed>("stats")
                 .help("Shows bot statistics")
                 .ran { sender, _ ->
-                val builder = EmbedBuilder()
-                builder.setTitle("Statistics and Info")
-                builder.setThumbnail(sender.guild.iconUrl)
-                builder.setDescription("""
-                    **Bot Info**
-                     Members: ${bot.database.users().size}
-                     Guilds: ${bot.database.guilds().size}
-                     Commands: ${handler.commands.size}
-                     Gateway ping: ${bot.jda.gatewayPing}ms
-                     Uptime: ${Duration.between(bot.startTime, Instant.now()).toHumanReadable()}
-                """.trimIndent())
-                InternalCommandResult(builder.build(), true)
-            }
+                    val builder = EmbedBuilder()
+                    builder.setTitle("Statistics and Info")
+                    builder.setThumbnail(sender.guild.iconUrl)
+                    builder.setDescription("""
+                        **Bot Info**
+                        Members: ${bot.database.users().size}
+                        Guilds: ${bot.database.guilds().size}
+                        Commands: ${handler.commands.size}
+                        Gateway ping: ${bot.jda.gatewayPing}ms
+                        Rest ping: ${bot.jda.restPing.complete()}ms
+                        Uptime: ${Duration.between(bot.startTime, Instant.now()).toHumanReadable()}
+                        Git: ${bot.config.gitUrl}
+                        Invite: _see ${bot.database.trnsctn { bot.database.guild(sender.guild).prefix} }invite_
+                    """.trimIndent())
+                    InternalCommandResult(builder.build(), true)
+                }
         )
 
         val administration = CommandCategory("Administration", mutableListOf())
@@ -204,36 +216,36 @@ class Commands(val bot: Bot) {
             CommandBuilder<Message, MessageEmbed>("ban").arg(StringArg("user id"))
                 .help("Bans a user.")
                 .ran { sender, args ->
-                val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
-                val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
-                if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
-                sender.guild.ban(id, 0).complete()
-                return@ran InternalCommandResult(embed("Banned", description = "Banned <@$id>"), true)
-            }.category(administration)
+                    val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
+                    val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
+                    if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
+                    sender.guild.ban(id, 0).complete()
+                    return@ran InternalCommandResult(embed("Banned", description = "Banned <@$id>"), true)
+                }.category(administration)
         )
 
         handler.register(
             CommandBuilder<Message, MessageEmbed>("unban").arg(StringArg("user id"))
                 .help("Unbans a user.")
                 .ran { sender, args ->
-                val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
-                val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
-                if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
-                sender.guild.unban(id).complete()
-                return@ran InternalCommandResult(embed("Unbanned", description = "Unbanned <@$id>"), true)
-            }.category(administration)
+                    val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
+                    val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
+                    if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
+                    sender.guild.unban(id).complete()
+                    return@ran InternalCommandResult(embed("Unbanned", description = "Unbanned <@$id>"), true)
+                }.category(administration)
         )
 
         handler.register(
             CommandBuilder<Message, MessageEmbed>("kick").arg(StringArg("user id"))
                 .help("Kicks a user.")
                 .ran { sender, args ->
-                val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
-                val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
-                if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
-                sender.guild.kick(id).complete()
-                return@ran InternalCommandResult(embed("Kicked", description = "Kicked <@$id>"), true)
-            }.category(administration)
+                    val id = (args["user id"] as String).removeSurrounding(prefix = "<@", suffix = ">")
+                    val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
+                    if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
+                    sender.guild.kick(id).complete()
+                    return@ran InternalCommandResult(embed("Kicked", description = "Kicked <@$id>"), true)
+                }.category(administration)
         )
 
         handler.register(

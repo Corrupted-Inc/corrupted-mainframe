@@ -19,7 +19,8 @@ This configuration file will follow this format:
   "token": "bot token here",
   "permaAdmins": ["your user ID here", "optional other user id here"],
   "databaseUrl": "database URL here",
-  "databaseDriver": "database driver here"
+  "databaseDriver": "database driver here",
+  "gitUrl": "https://github.com/Corrupted-Inc/corrupted-mainframe/"
 }
 ```
 If you don't know what the database URL and driver are, use the following:
