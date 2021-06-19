@@ -2,27 +2,11 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     kotlin("jvm") version "1.4.32"
-    id("org.jetbrains.kotlin.plugin.jpa") version "1.4.32"
-    id("org.jetbrains.kotlin.plugin.noarg") version "1.4.32"
-    id("org.jetbrains.kotlin.plugin.allopen") version "1.4.32"
     application
-}
-
-buildscript {
-    dependencies {
-        classpath("org.jetbrains.kotlin:kotlin-noarg:1.4.32")
-        classpath("org.jetbrains.kotlin:kotlin-allopen:1.4.32")
-    }
 }
 
 application {
     mainClass.set("MainKt")
-}
-
-allOpen {
-    annotation("javax.persistence.Entity")
-    annotation("javax.persistence.MappedSuperclass")
-    annotation("javax.persistence.Embeddable")
 }
 
 group = "com.github.blahblahbloopster"
@@ -39,7 +23,6 @@ sourceSets.test {
 repositories {
     mavenCentral()
     maven("https://m2.dv8tion.net/releases")
-    maven("http://repository.jboss.org/nexus/content/groups/public/")
     maven("https://jitpack.io")
 }
 
@@ -62,7 +45,6 @@ dependencies {
 
 tasks.test {
     useJUnit()
-//    useJUnitPlatform()
 }
 
 tasks.jar {
