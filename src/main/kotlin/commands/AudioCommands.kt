@@ -27,11 +27,29 @@ import kotlin.math.floor
 
 fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbed>) {
 
-    fun state(sender: Message) = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }.apply { println(bot.audio.currentlyPlaying.map { it.channel }) }
+    fun state(sender: Message) = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }
 
     suspend fun next(message: Message) = state(message)?.next() ?: false
 
     suspend fun previous(message: Message) = state(message)?.previous() ?: false
+
+    suspend fun queue(sender: Message, args: Map<String, Any?>): CommandHandler.InternalCommandResult<MessageEmbed> {
+        val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }
+            ?: return CommandHandler.InternalCommandResult(
+                embed("Nothing playing"),
+                false
+            )
+        val loaded = bot.audio.load(args["source"] as String, !(args["source"] as String).startsWith("http"))
+        if (loaded.isEmpty()) return CommandHandler.InternalCommandResult(
+            embed("Couldn't find '${args["source"] as String}'"),
+            false
+        )
+        state.queue(loaded)
+        return CommandHandler.InternalCommandResult(
+            embed("Successfully added ${loaded.size} items to the queue"),
+            true
+        )
+    }
 
     handler.register(
         CommandBuilder<Message, MessageEmbed>("play").args(StringArg("source"), StringArg("channel", optional = true))
@@ -52,7 +70,10 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
                         )
                 }
 
-                state(sender)?.destroy()
+                val st = state(sender)
+                if (st != null) {
+                    return@ran queue(sender, args)
+                }
                 delay(1000L)
                 val t = bot.audio.load(args["source"] as String, !(args["source"] as String).startsWith("http")).toMutableList()
                 if (t.isEmpty()) {
@@ -206,22 +227,8 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
         CommandBuilder<Message, MessageEmbed>("queue", "add").arg(StringArg("source"))
             .help("Adds a song (by double-quoted name or url) to the end of the playlist.")
             .ran { sender, args ->
-            val state = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }
-                ?: return@ran CommandHandler.InternalCommandResult(
-                    embed("Nothing playing"),
-                    false
-                )
-            val loaded = bot.audio.load(args["source"] as String, !(args["source"] as String).startsWith("http"))
-            if (loaded.isEmpty()) return@ran CommandHandler.InternalCommandResult(
-                embed("Couldn't find '${args["source"] as String}'"),
-                false
-            )
-            state.queue(loaded)
-            return@ran CommandHandler.InternalCommandResult(
-                embed("Successfully added ${loaded.size} items to the queue"),
-                true
-            )
-        }
+                return@ran queue(sender, args)
+            }
     )
 
     //fixme
@@ -261,7 +268,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
                 imgUrl = if (state.currentlyPlayingTrack?.info?.uri?.startsWith("https://youtube.com/watch?v=") == true) "https://img.youtube.com/vi/${state.currentlyPlayingTrack?.info?.uri?.substringAfterLast("?v=")}/maxresdefault.jpg" else null
             )
 
-            val message = sender.channel.sendMessage(embed).complete()
+            val message = sender.channel.sendMessageEmbeds(embed).complete()
 
             message.addReaction("⏮️").queue {
                 message.addReaction("⏹️")

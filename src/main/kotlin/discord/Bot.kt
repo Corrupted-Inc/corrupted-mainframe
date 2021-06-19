@@ -11,6 +11,8 @@ import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent
 import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
+import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
+import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.requests.GatewayIntent
 import org.jetbrains.exposed.sql.Database
@@ -21,7 +23,7 @@ import java.util.logging.Logger
 import kotlin.concurrent.schedule
 
 class Bot(val config: Config) {
-    val logger: Logger = Logger.getLogger("bot logger")
+    val log: Logger = Logger.getLogger("bot logger")
     val listeners = MultiListener()
     val startTime: Instant = Instant.now()
     val jda = JDABuilder.create(config.token, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS, GatewayIntent.GUILD_VOICE_STATES).addEventListeners(listeners).build()
@@ -32,13 +34,13 @@ class Bot(val config: Config) {
 
     init {
         Runtime.getRuntime().addShutdownHook(Thread {
-            logger.info("Saving audio state to database...")
+            log.info("Saving audio state to database...")
             audio.gracefulShutdown()
-            logger.info("Finished, exiting")
+            log.info("Finished, exiting")
         })
         listeners.add(object : ListenerAdapter() {
             override fun onReady(event: ReadyEvent) {
-                logger.info("Logged in as ${event.jda.selfUser.asTag}")
+                log.info("Logged in as ${event.jda.selfUser.asTag}")
                 for (guild in jda.guilds) {
                     guild.loadMembers {
                         database.addLink(guild, it.user)
@@ -64,6 +66,18 @@ class Bot(val config: Config) {
 
             override fun onGuildMemberJoin(event: GuildMemberJoinEvent) {
                 database.addLink(event.guild, event.user)
+            }
+
+            override fun onMessageReactionAdd(event: MessageReactionAddEvent) {
+                val roleId = database.autoRole(event.messageIdLong, event.reactionEmote) ?: return
+                val role = event.guild.getRoleById(roleId) ?: return
+                event.guild.addRoleToMember(event.userId, role).queue()
+            }
+
+            override fun onMessageReactionRemove(event: MessageReactionRemoveEvent) {
+                val roleId = database.autoRole(event.messageIdLong, event.reactionEmote) ?: return
+                val role = event.guild.getRoleById(roleId) ?: return
+                event.guild.removeRoleFromMember(event.userId, role).queue()
             }
         })
     }

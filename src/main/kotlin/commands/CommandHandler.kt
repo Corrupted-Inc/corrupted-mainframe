@@ -24,15 +24,19 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
 
     data class CommandCategory(val name: String, val subcategories: List<CommandCategory>)
 
-    open class Argument<T : Any>(val type: KClass<T>, val parser: (String) -> T, val checker: (String) -> Boolean, val name: String, val optional: Boolean)
+    open class Argument<T : Any>(val type: KClass<T>, val parser: (String) -> T, val checker: (String) -> Boolean, val name: String, val optional: Boolean, val vararg: Boolean) {
+        override fun toString(): String {
+            return "${this::class.java.simpleName}(type=$type, name=$name, optional=$optional, vararg=$vararg)"
+        }
+    }
 
-    class StringArg(name: String, optional: Boolean = false) : Argument<String>(String::class, { it }, { true }, name, optional)
+    class StringArg(name: String, optional: Boolean = false, vararg: Boolean = false) : Argument<String>(String::class, { it }, { true }, name, optional, vararg)
 
-    class IntArg(name: String, optional: Boolean = false) : Argument<Int>(Int::class, String::toInt, { it.matches("-?\\d+".toRegex()) }, name, optional)
+    class IntArg(name: String, optional: Boolean = false, vararg: Boolean = false) : Argument<Int>(Int::class, String::toInt, { it.matches("-?\\d+".toRegex()) }, name, optional, vararg)
 
-    class LongArg(name: String, optional: Boolean = false) : Argument<Long>(Long::class, String::toLong, { it.matches("-?\\d+".toRegex()) }, name, optional)
+    class LongArg(name: String, optional: Boolean = false, vararg: Boolean = false) : Argument<Long>(Long::class, String::toLong, { it.matches("-?\\d+".toRegex()) }, name, optional, vararg)
 
-    class DoubleArg(name: String, optional: Boolean = false) : Argument<Double>(Double::class, String::toDouble, { it.matches("^-?\\d+($|(\\.\\d+))".toRegex()) }, name, optional)
+    class DoubleArg(name: String, optional: Boolean = false, vararg: Boolean = false) : Argument<Double>(Double::class, String::toDouble, { it.matches("^-?\\d+($|(\\.\\d+))".toRegex()) }, name, optional, vararg)
 
     class Command<S, D> private constructor(
         val base: List<String>,
@@ -42,16 +46,36 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
         val overrideSend: Sender<S, D>?,
         val category: CommandCategory?
     ) {
+        init {
+            if (arguments.dropLast(1).any { it.vararg }) throw IllegalArgumentException("Only the last argument can be a vararg!  (in command $base)")
+        }
 
         fun matches(args: List<String>): Pair<Boolean, List<Argument<*>>> {
             if (args.isEmpty() && !arguments.any { !it.optional }) return Pair(true, arguments)
-            var index = 0
+            var index = -1
             val used = mutableListOf<Argument<*>>()
             for (found in args) {
-                var arg = arguments.getOrNull(index++) ?: return Pair(false, emptyList())
+                var arg: Argument<*>
+                arg = if (++index >= arguments.size) {
+                    if (arguments.lastOrNull()?.vararg == true) {
+                        arguments.last()
+                    } else {
+                        return Pair(false, emptyList())
+                    }
+                } else {
+                    arguments.getOrNull(index) ?: return Pair(false, emptyList())
+                }
+
                 while (arg.optional && !arg.checker(found)) {
-                    index++
-                    arg = arguments.getOrNull(index) ?: return Pair(false, emptyList())
+                    arg = if (++index > arguments.size) {
+                        if (arguments.lastOrNull()?.vararg == true) {
+                            arguments.last()
+                        } else {
+                            return Pair(false, emptyList())
+                        }
+                    } else {
+                        arguments.getOrNull(index) ?: return Pair(false, emptyList())
+                    }
                 }
                 if (!arg.checker(found)) {
                     return Pair(false, emptyList())
@@ -139,8 +163,17 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
         val found = commands.singleOrNull { it.base.contains(name) && it.matches(args).first } ?: return CommandResult(sender, null, false, null)
         val usedArgs = found.matches(args).second
         val map = mutableMapOf<String, Any>()
+        val varargAccumulator = mutableListOf<Any?>()
         for ((item, value) in usedArgs.zip(args)) {
-            map[item.name] = item.parser(value)
+            val parsed = item.parser(value)
+            if (item.vararg) {
+                varargAccumulator.add(parsed)
+            } else {
+                map[item.name] = parsed
+            }
+        }
+        if (usedArgs.lastOrNull()?.vararg == true) {
+            map[usedArgs.last().name] = varargAccumulator
         }
         return try { found.runner(sender, map).run { CommandResult(sender, value, success, found) } } catch (e: Exception) { e.printStackTrace(); CommandResult(sender, null, false, found) }
     }

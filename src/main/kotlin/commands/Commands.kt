@@ -58,7 +58,7 @@ class Commands(val bot: Bot) {
     }
 
     init {
-        class UserArg(name: String, optional: Boolean = false) : Argument<User>(User::class, { bot.jda.retrieveUserById(it.removeSurrounding("<@", ">")).complete()!! }, { bot.jda.retrieveUserById(it.removeSurrounding("<@", ">")).complete() != null }, name, optional)
+        class UserArg(name: String, optional: Boolean = false, vararg: Boolean = false) : Argument<User>(User::class, { bot.jda.retrieveUserById(it.removeSurrounding("<@", ">")).complete()!! }, { bot.jda.retrieveUserById(it.removeSurrounding("<@", ">")).complete() != null }, name, optional, vararg)
 
         val unauthorized = EmbedBuilder().setTitle("Insufficient Permissions").setColor(Color(235, 70, 70)).build()
         handler.register(
@@ -117,6 +117,38 @@ class Commands(val bot: Bot) {
                     }
                     InternalCommandResult(null, true)
             }.help("Shows a list of commands and their descriptions.")
+        )
+
+        handler.register(
+            CommandBuilder<Message, MessageEmbed>("reactionrole").args(StringArg("message link"), StringArg("reactions", vararg = true))
+                .help("Takes a message link and a space-separated list following the format \"emote name:role name\" (including the quotes)")
+                .ran { sender, args ->
+                    val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
+                    if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
+
+                    val reactionsMap = (args["reactions"] as List<Any?>)
+                            .mapNotNull { it as? String }  // Cast to List<String>, weeding out any nulls
+                            .map { Pair(it.substringBeforeLast(":"), it.substringAfterLast(":").dropWhile { c -> c == ' ' }) }  // Split by colon into emote and role name, stripping spaces from the start of the latter
+                            .mapNotNull { sender.guild.getRolesByName(it.second, true).firstOrNull()?.run { Pair(it.first, this) } }  // Retrieve all the roles
+                            .filter { sender.member?.canInteract(it.second) == true }  // Prevent privilege escalation
+                            .associate { Pair(it.first, it.second.idLong) }  // Convert to map for use by the database
+
+                    val link = args["message link"] as String
+                    val messageId = link.substringAfterLast("/")
+                    val channelId = link.removeSuffix("/$messageId").substringAfterLast("/")
+                    val msg = sender.guild.getTextChannelById(
+                        channelId.toLongOrNull() ?: return@ran InternalCommandResult(embed("Invalid message link"), false))
+                        ?.retrieveMessageById(
+                            messageId.toLongOrNull() ?: return@ran InternalCommandResult(embed("Invalid message link"), false))
+                        ?.complete() ?: return@ran InternalCommandResult(embed("Invalid message link"), false)
+                    bot.database.addAutoRole(msg, reactionsMap)
+
+                    for (reaction in reactionsMap) {
+                        msg.addReaction(reaction.key).queue()
+                    }
+
+                    return@ran InternalCommandResult(embed("Successfully added ${reactionsMap.size} reaction roles:", content = reactionsMap.map { Field(it.key, sender.guild.getRoleById(it.value)?.name, false) }), true)
+                }
         )
 
         handler.register(
