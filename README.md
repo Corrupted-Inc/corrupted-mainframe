@@ -32,4 +32,4 @@ You can create the SQLITE database like so:
 
 ## Contributing
 Pull requests are welcome!  If you find a security vulnerability, please contact an admin
-directly in [our discord](https://discord.gg/3tAeYmbAYE).
+directly in [our discord](https://discord.gg/WF8HU47PDc).
