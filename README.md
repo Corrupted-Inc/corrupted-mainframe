@@ -8,8 +8,8 @@ music, and utilities.
 1. Clone the repo<br>
  `git clone https://github.com/Corrupted-Inc/corrupted-mainframe.git`
 1. CD into the directory
-1. `./gradlew jar` (linux/mac) or `gradlew.bat jar` (windows)
-1. The output jar will be located at build/libs/corrupted-mainframe.jar
+1. `./gradlew bot:jar` (linux/mac) or `gradlew.bat bot:jar` (windows)
+1. The output jar will be located at bot/build/libs/corrupted-mainframe.jar
 
 ## Configuration
 In the same directory you run the jar from, make a file called `config.json`.

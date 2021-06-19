@@ -1,15 +1,16 @@
-package commands
+package com.github.corruptedinc.corruptedmainframe.commands
 
-import audio.Audio
+import com.github.corruptedinc.corruptedmainframe.audio.Audio
+import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.Command.CommandBuilder
+import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.IntArg
+import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.StringArg
+import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
+import com.github.corruptedinc.corruptedmainframe.discord.Bot
+import com.github.corruptedinc.corruptedmainframe.utils.levenshtein
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer
 import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
-import commands.CommandHandler.Command.CommandBuilder
-import commands.CommandHandler.IntArg
-import commands.CommandHandler.StringArg
-import commands.Commands.Companion.embed
-import discord.Bot
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.audio.hooks.ConnectionListener
@@ -19,8 +20,6 @@ import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
-import utils.levenshtein
-import java.lang.NumberFormatException
 import java.util.*
 import kotlin.concurrent.schedule
 import kotlin.math.floor
@@ -52,7 +51,8 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     }
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("play").args(StringArg("source"), StringArg("channel", optional = true))
+        CommandBuilder<Message, MessageEmbed>("play")
+            .args(StringArg("source"), StringArg("channel", optional = true))
             .help("Plays a song.  Give the URL/name in double quotes, and optionally the voice channel name in double quotes.")
             .ran { sender, args ->
                 var channel = if (args["channel"] == null) sender.member?.voiceState?.channel else null

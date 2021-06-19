@@ -1,4 +1,4 @@
-package core.db
+package com.github.corruptedinc.corruptedmainframe.core.db
 
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import net.dv8tion.jda.api.entities.*

@@ -1,5 +1,6 @@
-import core.Config
-import discord.Bot
+package com.github.corruptedinc.corruptedmainframe
+
+import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import java.io.File
 
 fun main() {

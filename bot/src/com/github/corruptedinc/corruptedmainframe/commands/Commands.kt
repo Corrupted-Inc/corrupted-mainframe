@@ -1,8 +1,9 @@
-package commands
+package com.github.corruptedinc.corruptedmainframe.commands
 
-import commands.CommandHandler.*
-import commands.CommandHandler.Command.CommandBuilder
-import discord.Bot
+import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.*
+import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.Command.*
+import com.github.corruptedinc.corruptedmainframe.discord.Bot
+import com.github.corruptedinc.corruptedmainframe.utils.admin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.EmbedBuilder
@@ -15,8 +16,7 @@ import net.dv8tion.jda.api.interactions.components.Button
 import net.dv8tion.jda.api.utils.MiscUtil
 import net.dv8tion.jda.api.utils.TimeUtil
 import org.jetbrains.exposed.sql.transactions.transaction
-import utils.admin
-import utils.toHumanReadable
+import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
 import java.awt.Color
 import java.time.Duration
 import java.time.Instant

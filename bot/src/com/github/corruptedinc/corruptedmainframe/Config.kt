@@ -1,4 +1,4 @@
-package core
+package com.github.corruptedinc.corruptedmainframe
 
 import com.beust.klaxon.Klaxon
 import java.io.File

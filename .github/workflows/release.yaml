@@ -15,11 +15,11 @@ jobs:
       - name: Build
         run: |
           echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
-          ./gradlew jar
+          ./gradlew bot:jar
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: build/libs/corrupted-mainframe.jar
+          files: bot/build/libs/corrupted-mainframe.jar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

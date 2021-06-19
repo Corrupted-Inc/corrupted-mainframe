@@ -1,4 +1,4 @@
-package utils
+package com.github.corruptedinc.corruptedmainframe.utils
 
 import java.time.Duration
 import kotlin.math.min

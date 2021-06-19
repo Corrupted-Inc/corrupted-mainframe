@@ -1,9 +1,9 @@
-package discord
+package com.github.corruptedinc.corruptedmainframe.discord
 
-import audio.Audio
-import commands.Commands
-import core.Config
-import core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.Config
+import com.github.corruptedinc.corruptedmainframe.audio.Audio
+import com.github.corruptedinc.corruptedmainframe.commands.Commands
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import net.dv8tion.jda.api.JDABuilder

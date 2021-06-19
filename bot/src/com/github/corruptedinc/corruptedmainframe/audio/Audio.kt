@@ -1,5 +1,6 @@
-package audio
+package com.github.corruptedinc.corruptedmainframe.audio
 
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.google.common.cache.Cache
 import com.google.common.cache.CacheBuilder
 import com.google.common.cache.CacheLoader
@@ -14,8 +15,7 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import com.sedmelluq.discord.lavaplayer.track.BasicAudioPlaylist
 import com.sedmelluq.discord.lavaplayer.track.playback.AudioFrame
-import core.db.ExposedDatabase
-import discord.Bot
+import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking

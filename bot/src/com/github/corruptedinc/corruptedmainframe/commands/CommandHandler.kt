@@ -1,4 +1,4 @@
-package commands
+package com.github.corruptedinc.corruptedmainframe.commands
 
 import kotlin.reflect.KClass
 
