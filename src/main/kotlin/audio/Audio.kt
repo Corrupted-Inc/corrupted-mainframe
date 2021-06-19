@@ -36,7 +36,9 @@ class Audio(val bot: Bot) {
         bot.scope.launch {
             delay(10_000L)
             for (item in bot.database.musicStates()) {
-                currentlyPlaying.add(AudioState(item))
+                if (bot.jda.guilds.any { it.idLong == bot.database.trnsctn { item.guild.discordId } }) {  // Because sharding, only restart playing for guilds that it's actually connected to
+                    currentlyPlaying.add(AudioState(item))
+                }
             }
         }
     }
@@ -80,7 +82,10 @@ class Audio(val bot: Bot) {
         while (!done) {
             delay(50L)
         }
-        val tracks = track?.tracks ?: emptyList()
+        var tracks = track?.tracks ?: emptyList()
+        if (search) {
+            tracks = listOfNotNull(tracks.firstOrNull())
+        }
         cache.put(source, tracks)
         return tracks
     }
