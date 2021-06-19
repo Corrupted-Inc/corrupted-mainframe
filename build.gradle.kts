@@ -47,7 +47,7 @@ dependencies {
     testImplementation(kotlin("test-junit5"))
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.6.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.6.0")
-    implementation("net.dv8tion:JDA:4.2.1_253")
+    implementation("net.dv8tion:JDA:4.3.0_280")
     implementation(group = "com.beust", name = "klaxon", version = "5.5")
     implementation(group = "org.xerial", name = "sqlite-jdbc", version = "3.34.0")
     implementation(group = "org.apache.logging.log4j", name = "log4j", version = "2.14.1")

@@ -3,12 +3,17 @@ package commands
 import commands.CommandHandler.*
 import commands.CommandHandler.Command.CommandBuilder
 import discord.Bot
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.MessageEmbed.Field
 import net.dv8tion.jda.api.entities.User
+import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
+import net.dv8tion.jda.api.interactions.components.Button
+import net.dv8tion.jda.api.utils.MiscUtil
+import net.dv8tion.jda.api.utils.TimeUtil
 import org.jetbrains.exposed.sql.transactions.transaction
 import utils.admin
 import utils.toHumanReadable
@@ -16,11 +21,12 @@ import java.awt.Color
 import java.time.Duration
 import java.time.Instant
 import java.time.temporal.TemporalAccessor
+import kotlin.math.min
 import kotlin.random.Random
 
 class Commands(val bot: Bot) {
     private val handler = CommandHandler<Message, MessageEmbed> { commandResult ->
-        commandResult.sender.channel.sendMessage(commandResult.value ?: return@CommandHandler).queue()
+        commandResult.sender.replyEmbeds(commandResult.value ?: return@CommandHandler).queue()
     }
 
     companion object {
@@ -57,20 +63,89 @@ class Commands(val bot: Bot) {
         val unauthorized = EmbedBuilder().setTitle("Insufficient Permissions").setColor(Color(235, 70, 70)).build()
         handler.register(
             CommandBuilder<Message, MessageEmbed>("help", "commands").arg(IntArg("page", true))
-                .ran { _, args ->
-                var page = args.getOrDefault("page", 1) as Int - 1
-                val list = handler.commands.sortedBy { it.base.contains("help") }.chunked(10)
-                if (page !in list.indices) page = 0
+                .ran { sender, args ->
+                    val page = args.getOrDefault("page", 1) as Int - 1
 
-                val commands = list[page]
-                val builder = EmbedBuilder()
-                builder.setTitle("Help ${page + 1}/${list.size}")
-                for (command in commands) {
-                    val base = if (command.base.size == 1) command.base.first() else command.base.joinToString(prefix = "(", separator = "/", postfix = ")")
-                    builder.addField(base + " " + command.arguments.joinToString(" ") { if (it.optional) "[${it.name}]" else "<${it.name}>" }, command.help, false)
-                }
-                InternalCommandResult(builder.build(), true)
+                    val helpPages = handler.commands.sortedBy { it.base.contains("help") }.chunked(10)
+                    fun helpPage(page: Int): MessageEmbed {
+                        val p = page.coerceIn(helpPages.indices)
+
+                        val commands = helpPages[p]
+                        val builder = EmbedBuilder()
+                        builder.setTitle("Help ${p + 1}/${helpPages.size}")
+                        for (command in commands) {
+                            val base = if (command.base.size == 1) command.base.first() else command.base.joinToString(
+                                prefix = "(",
+                                separator = "/",
+                                postfix = ")"
+                            )
+                            builder.addField(
+                                base + " " + command.arguments.joinToString(" ") { if (it.optional) "[${it.name}]" else "<${it.name}>" },
+                                command.help,
+                                false
+                            )
+                        }
+                        return builder.build()
+                    }
+
+                    var p = page
+
+                    fun actionRow() = listOf(Button.primary("help-prev", "Previous Page").withDisabled(p == 0), Button.primary("help-next", "Next Page").withDisabled(p == helpPages.size - 1))
+
+                    val message = sender.replyEmbeds(helpPage(page))
+                        .setActionRow(actionRow())
+                        .complete()
+                    val lambda = { event: ButtonClickEvent ->
+                        if (event.messageId == message.id && event.user == sender.author) {
+                            if (event.button?.id == "help-prev") {
+                                p--
+                                p = p.coerceIn(helpPages.indices)
+                                event.editMessageEmbeds(helpPage(p.coerceIn(helpPages.indices))).setActionRow(actionRow()).queue()
+                            } else {
+                                p++
+                                p = p.coerceIn(helpPages.indices)
+                                event.editMessageEmbeds(helpPage(p)).setActionRow(actionRow()).queue()
+                            }
+                        } else if (event.messageId == message.id) {
+                            event.message?.embeds?.let { event.editMessageEmbeds(it) }
+                        }
+                    }
+                    bot.buttonListeners.add(lambda)
+                    bot.scope.launch {
+                        delay(120_000)
+                        bot.buttonListeners.remove(lambda)
+                    }
+                    InternalCommandResult(null, true)
             }.help("Shows a list of commands and their descriptions.")
+        )
+
+        handler.register(
+            CommandBuilder<Message, MessageEmbed>("purge").arg(IntArg("count")).ran { sender, args ->
+                val isAdmin = bot.database.user(sender.author).botAdmin || sender.member.admin
+                if (!isAdmin) return@ran InternalCommandResult(unauthorized, false)
+                val count = (args["count"] as? Int ?: 10).coerceIn(1, 1000) + 1
+                bot.scope.launch {
+                    delay(2000)
+                    var yetToDelete = count
+                    while (yetToDelete > 0) {
+                        val messages = sender.channel.history.retrievePast(min(100, yetToDelete)).complete()
+                        if (messages.size == 1) {
+                            messages.first().delete().complete()
+                        } else {
+                            val bulkDeletable = messages.filter { TimeUtil.getDiscordTimestamp(System.currentTimeMillis() - 14 * 24 * 60 * 60 * 1000) < MiscUtil.parseSnowflake(it.id) }
+                            sender.textChannel.deleteMessages(bulkDeletable).complete()
+                            for (item in messages - bulkDeletable) {
+                                item.delete().queue()
+                                delay(100)
+                            }
+                        }
+                        if (messages.size != min(100, yetToDelete)) break
+                        yetToDelete -= messages.size
+                        delay(1100)
+                    }
+                }
+                return@ran InternalCommandResult(embed("Purging ${count - 1} messages..."), true)
+            }
         )
 
         handler.register(
@@ -200,7 +275,7 @@ class Commands(val bot: Bot) {
                     dmEmbed.addField("Insufficient permissions", "To view information from the database you must be a global admin.", false)
                 }
 
-                sender.author.openPrivateChannel().complete().sendMessage(dmEmbed.build()).queue()
+                sender.author.openPrivateChannel().complete().sendMessageEmbeds(dmEmbed.build()).queue()
                 return@ran InternalCommandResult(embed.build(), true)
             }
         )

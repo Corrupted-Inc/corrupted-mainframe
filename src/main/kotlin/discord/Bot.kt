@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent
+import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.requests.GatewayIntent
@@ -27,6 +28,7 @@ class Bot(val config: Config) {
     val scope = CoroutineScope(Dispatchers.Default)
     val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver).apply { useNestedTransactions = true })
     val audio = Audio(this)
+    val buttonListeners = mutableListOf<(ButtonClickEvent) -> Unit>()
 
     init {
         Runtime.getRuntime().addShutdownHook(Thread {
@@ -72,6 +74,10 @@ class Bot(val config: Config) {
         listeners.add(object : ListenerAdapter() {
             override fun onMessageReceived(event: MessageReceivedEvent) {
                 commands.handle(event.message)
+            }
+
+            override fun onButtonClick(event: ButtonClickEvent) {
+                buttonListeners.forEach { it(event) }
             }
         })
     }
