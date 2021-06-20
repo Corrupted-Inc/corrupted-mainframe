@@ -28,6 +28,6 @@ tasks.jar {
     from(configurations.runtimeClasspath.get().filter { !it.path.endsWith(".pom") }.map { if (it.isDirectory) it else zipTree(it) })
 
     manifest {
-        attributes["Main-Class"] = "MainKt"
+        attributes["Main-Class"] = "com.github.corruptedinc.corruptedmainframe.MainKt"
     }
 }
