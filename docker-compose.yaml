@@ -12,9 +12,10 @@ services:
 
   bot:
     image: openjdk:14
-    command: bash -c "cd /root/; curl -L https://github.com/Corrupted-Inc/corrupted-mainframe/releases/latest/download/corrupted-mainframe.jar > corrupted-mainframe.jar; java -jar corrupted-mainframe.jar"
+    command: bash -c "cd /root/; java -jar corrupted-mainframe.jar"
     volumes:
       - ./config.json/:/root/config.json
+      - ./corrupted-mainframe.jar/:/root/corrupted-mainframe.jar
 
 volumes:
   pgdata:  # Postgres volume
