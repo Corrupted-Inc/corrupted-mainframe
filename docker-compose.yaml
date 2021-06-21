@@ -13,6 +13,8 @@ services:
   bot:
     image: openjdk:14
     command: bash -c "cd /root/; java -jar corrupted-mainframe.jar"
+    depends_on:
+      - db
     volumes:
       - ./config.json/:/root/config.json
       - ./corrupted-mainframe.jar/:/root/corrupted-mainframe.jar

@@ -102,6 +102,7 @@ class Audio(val bot: Bot) {
         val channel: VoiceChannel
         private val player: AudioPlayerSendHandler
         var playlistPos: Long
+        val playlistCount get() = bot.database.playlistEntryCount(databaseState)
 
         constructor(channel: VoiceChannel, player: AudioPlayerSendHandler, playlist: MutableList<AudioTrack>, position: Long) {
             playlistCache = playlist.map { it.info.uri }
@@ -155,7 +156,8 @@ class Audio(val bot: Bot) {
             get() = player.audioPlayer.volume
             set(value) { player.audioPlayer.volume = value }
 
-        val progress get() = player.audioPlayer.playingTrack?.position
+        var progress get() = player.audioPlayer.playingTrack?.position
+            set(value) { if (value != null) { player.audioPlayer.playingTrack?.position = value.coerceIn(0..(currentlyPlayingTrack?.duration ?: 0)) } }
 
         val currentlyPlayingTrack: AudioTrack? get() = player.audioPlayer.playingTrack
 

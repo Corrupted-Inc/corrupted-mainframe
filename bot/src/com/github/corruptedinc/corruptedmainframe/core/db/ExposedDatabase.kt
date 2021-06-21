@@ -336,6 +336,10 @@ class ExposedDatabase(val db: Database) {
         }
     }
 
+    fun playlistEntryCount(state: MusicState): Long {
+        return trnsctn { state.items.count() }
+    }
+
     fun autoRoleMessages(guild: Guild): List<AutoRoleMessage> {
         return transaction(db) {
             val guildm = guild(guild)
