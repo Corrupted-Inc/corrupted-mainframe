@@ -71,6 +71,14 @@ class Bot(val config: Config) {
             override fun onMessageReactionAdd(event: MessageReactionAddEvent) {
                 val roleId = database.autoRole(event.messageIdLong, event.reactionEmote) ?: return
                 val role = event.guild.getRoleById(roleId) ?: return
+
+                // If they're muted they aren't eligible for reaction roles
+                val end = event.user?.let { database.findMute(it, event.guild)?.end }
+                if (end?.let { Instant.ofEpochSecond(it).isAfter(Instant.now()) } == true) {
+                    event.reaction.removeReaction(event.user!!).queue()
+                    return
+                }
+
                 event.guild.addRoleToMember(event.userId, role).queue()
             }
 

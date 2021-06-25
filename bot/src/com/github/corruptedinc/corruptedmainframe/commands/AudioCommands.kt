@@ -14,11 +14,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.audio.hooks.ConnectionListener
 import net.dv8tion.jda.api.audio.hooks.ConnectionStatus
+import net.dv8tion.jda.api.entities.Emoji
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.User
+import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
+import net.dv8tion.jda.api.interactions.components.Button
 import java.util.*
 import kotlin.concurrent.schedule
 import kotlin.math.floor
@@ -26,7 +29,7 @@ import kotlin.math.roundToLong
 
 fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbed>) {
 
-    fun state(sender: Message) = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }
+    fun state(sender: Message) = bot.audio.currentlyPlaying.singleOrNull { it.channel.guild == sender.guild }  //fixme channels
 
     suspend fun next(message: Message) = state(message)?.next() ?: false
 
@@ -51,7 +54,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     }
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("play")
+        CommandBuilder<Message, MessageEmbed>("play", "queue")
             .args(StringArg("source"), StringArg("channel", optional = true))
             .help("Plays a song.  Give the URL/name in double quotes, and optionally the voice channel name in double quotes.")
             .ran { sender, args ->
@@ -223,14 +226,6 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
         }
     )
 
-    handler.register(
-        CommandBuilder<Message, MessageEmbed>("queue", "add").arg(StringArg("source"))
-            .help("Adds a song (by double-quoted name or url) to the end of the playlist.")
-            .ran { sender, args ->
-                return@ran queue(sender, args)
-            }
-    )
-
     //fixme
 //    handler.register(
 //        CommandBuilder<Message, MessageEmbed>("dequeue", "remove", "delete").arg(IntArg("index")).ran { sender, args ->
@@ -271,60 +266,49 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
         CommandBuilder<Message, MessageEmbed>("status", "playing")
             .help("Shows the music status with reaction controls.")
             .ran { sender, _ ->
-            val state = state(sender) ?: return@ran InternalCommandResult(
-                    embed("Nothing playing"),
-                    false
+                val state = state(sender) ?: return@ran InternalCommandResult(
+                        embed("Nothing playing"),
+                        false
+                    )
+                val length = 15
+                val timeFraction = (state.progress ?: 0) / (state.currentlyPlayingTrack?.duration?.toDouble() ?: 1.0)
+                val dashCount = floor(timeFraction * length).toInt()
+                val spaceCount = 4 * (length - dashCount)
+                val embed = embed(
+                    "'${state.currentlyPlayingTrack?.info?.title}' by ${state.currentlyPlayingTrack?.info?.author}",
+                    description = "|${":heavy_minus_sign:".repeat(dashCount)}:radio_button:${"-".repeat(spaceCount)}|",
+                    imgUrl = if (state.currentlyPlayingTrack?.info?.uri?.startsWith("https://youtube.com/watch?v=") == true) "https://img.youtube.com/vi/${state.currentlyPlayingTrack?.info?.uri?.substringAfterLast("?v=")}/maxresdefault.jpg" else null
                 )
-            val length = 15
-            val timeFraction = (state.progress ?: 0) / (state.currentlyPlayingTrack?.duration?.toDouble() ?: 1.0)
-            val dashCount = floor(timeFraction * length).toInt()
-            val spaceCount = 4 * (length - dashCount)
-            val embed = embed(
-                "'${state.currentlyPlayingTrack?.info?.title}' by ${state.currentlyPlayingTrack?.info?.author}",
-                description = "|${":heavy_minus_sign:".repeat(dashCount)}:radio_button:${"-".repeat(spaceCount)}|",
-                imgUrl = if (state.currentlyPlayingTrack?.info?.uri?.startsWith("https://youtube.com/watch?v=") == true) "https://img.youtube.com/vi/${state.currentlyPlayingTrack?.info?.uri?.substringAfterLast("?v=")}/maxresdefault.jpg" else null
-            )
 
-            val message = sender.channel.sendMessageEmbeds(embed).complete()
+                fun buttons(disabled: Boolean = false) = arrayOf(
+                    Button.primary("prev",  Emoji.fromUnicode("⏮️")).withDisabled(disabled),
+                    Button.primary("stop",  Emoji.fromUnicode("⏹")).withDisabled(disabled),
+                    Button.primary("pause", Emoji.fromUnicode("⏯")).withDisabled(disabled),
+                    Button.primary("next",  Emoji.fromUnicode("⏭")).withDisabled(disabled),
+                )
 
-            message.addReaction("⏮️").queue {
-                message.addReaction("⏹️")
-                    .queue { message.addReaction("⏯️").queue { message.addReaction("⏭️").queue() } }
-            }
-            bot.listeners.add(object : ListenerAdapter() {
-                override fun onMessageReactionAdd(event: MessageReactionAddEvent) {
-                    if (event.user == bot.jda.selfUser) return
+                val message = sender.channel.sendMessageEmbeds(embed).setActionRow(*buttons(false)).complete()
+
+                val listener = { event: ButtonClickEvent ->
                     if (event.messageId == message.id) {
-                        try {
-                            val c = event.reactionEmote.emoji
-                            when {
-                                "⏹" in c -> {
-                                    state(sender)?.destroy()
-                                }
-                                "⏯" in c -> {
-                                    state.paused = !state.paused
-                                }
-                                "⏭" in c -> {
-                                    bot.scope.launch {
-                                        state.next()
-                                    }
-                                }
-                                "⏮️" in c -> {
-                                    bot.scope.launch {
-                                        state.previous()
-                                    }
-                                }
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
+                        when (event.button?.id) {
+                            "prev" -> bot.scope.launch { state.previous() }
+                            "stop" -> state.destroy()
+                            "pause" -> state.paused = !state.paused
+                            "next" -> bot.scope.launch { state.next() }
                         }
-                        event.retrieveMessage().complete()
-                            .removeReaction(event.reactionEmote.asCodepoints, event.retrieveUser().complete()).queue()
                     }
                 }
-            }.apply { val s = this; Timer().schedule(60_000L) { bot.listeners.remove(s); message.clearReactions().queue() } })
 
-            return@ran InternalCommandResult(null, true)
+                bot.buttonListeners.add(listener)
+
+                bot.scope.launch {
+                    delay(240_000)
+                    message.editMessageEmbeds(embed).setActionRow(*buttons(true)).complete()
+                    bot.buttonListeners.remove(listener)
+                }
+
+                return@ran InternalCommandResult(null, true)
         }
     )
 }

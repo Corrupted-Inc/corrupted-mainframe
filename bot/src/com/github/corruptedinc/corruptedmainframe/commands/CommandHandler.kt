@@ -44,7 +44,8 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
         val help: String,
         val runner: Runner<S, D>,
         val overrideSend: Sender<S, D>?,
-        val category: CommandCategory?
+        val category: CommandCategory?,
+        val validator: ((sender: S, args: Map<String, Any>) -> D?)?
     ) {
         init {
             if (arguments.dropLast(1).any { it.vararg }) throw IllegalArgumentException("Only the last argument can be a vararg!  (in command $base)")
@@ -93,14 +94,16 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
             private val overrideSend: Sender<S, D>?
             private val help: String
             private val category: CommandCategory?
+            private val validator: ((sender: S, args: Map<String, Any>) -> D?)?
 
-            private constructor(base: List<String>, args: List<Argument<*>>, help: String, runner: Runner<S, D>?, overrideSend: Sender<S, D>?, category: CommandCategory?) {
+            private constructor(base: List<String>, args: List<Argument<*>>, help: String, runner: Runner<S, D>?, overrideSend: Sender<S, D>?, category: CommandCategory?, validator: ((sender: S, args: Map<String, Any>) -> D?)?) {
                 this.base = base
                 this.args = args
                 this.runner = runner
                 this.overrideSend = overrideSend
                 this.help = help
                 this.category = category
+                this.validator = validator
             }
 
             constructor(vararg base: String) {
@@ -110,34 +113,39 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
                 overrideSend = null
                 help = ""
                 category = null
+                validator = null
             }
 
             fun arg(type: Argument<*>): CommandBuilder<S, D> {
-                return CommandBuilder(base, args.plus(type), help, runner, overrideSend, category)
+                return CommandBuilder(base, args.plus(type), help, runner, overrideSend, category, validator)
             }
 
             fun args(vararg type: Argument<*>): CommandBuilder<S, D> {
-                return CommandBuilder(base, args.plus(type), help, runner, overrideSend, category)
+                return CommandBuilder(base, args.plus(type), help, runner, overrideSend, category, validator)
             }
 
             fun ran(runner: Runner<S, D>): CommandBuilder<S, D> {
-                return CommandBuilder(base, args, help, runner, overrideSend, category)
+                return CommandBuilder(base, args, help, runner, overrideSend, category, validator)
             }
 
             fun sent(overrideSend: Sender<S, D>): CommandBuilder<S, D> {
-                return CommandBuilder(base, args, help, runner, overrideSend, category)
+                return CommandBuilder(base, args, help, runner, overrideSend, category, validator)
             }
 
             fun help(text: String): CommandBuilder<S, D> {
-                return CommandBuilder(base, args, text, runner, overrideSend, category)
+                return CommandBuilder(base, args, text, runner, overrideSend, category, validator)
             }
 
             fun category(category: CommandCategory?): CommandBuilder<S, D> {
-                return CommandBuilder(base, args, help, runner, overrideSend, category)
+                return CommandBuilder(base, args, help, runner, overrideSend, category, validator)
+            }
+
+            fun validator(validator: ((sender: S, args: Map<String, Any>) -> D?)?): CommandBuilder<S, D> {
+                return CommandBuilder(base, args, help, runner, overrideSend, category, validator)
             }
 
             fun build(): Command<S, D> {
-                return Command(base, args, help, runner!!, overrideSend, category)
+                return Command(base, args, help, runner!!, overrideSend, category, validator)
             }
         }
     }
@@ -175,6 +183,7 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
         if (usedArgs.lastOrNull()?.vararg == true) {
             map[usedArgs.last().name] = varargAccumulator
         }
+        found.validator?.invoke(sender, map)?.let { return CommandResult(sender, it, false, found) }
         return try { found.runner(sender, map).run { CommandResult(sender, value, success, found) } } catch (e: Exception) { e.printStackTrace(); CommandResult(sender, null, false, found) }
     }
 

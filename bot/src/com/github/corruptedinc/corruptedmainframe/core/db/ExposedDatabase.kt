@@ -76,13 +76,6 @@ class ExposedDatabase(val db: Database) {
         var role by MutedUserRoles.role
     }
 
-    /*
-    * Needs to store:
-    *  - Playlist position
-    *  - Volume
-    *  - Paused
-    */
-
     object PlaylistEntries : LongIdTable(name = "playlist_entries") {
         val state = reference("state", MusicStates)
         val audioSource = varchar("audioSource", 255)
@@ -277,7 +270,10 @@ class ExposedDatabase(val db: Database) {
         }
     }
 
-    fun playlistItem(state: MusicState, position: Long): String? = transaction(db) { PlaylistEntry.find { (PlaylistEntries.state eq state.id) and (PlaylistEntries.position eq position) }.toList().firstOrNull()?.audioSource }
+    fun playlistItem(state: MusicState, position: Long): String? =
+        transaction(db) {
+            PlaylistEntry.find { (PlaylistEntries.state eq state.id) and (PlaylistEntries.position eq position) }.toList().firstOrNull()?.audioSource
+        }
 
     fun playlistItems(state: MusicState, range: LongRange): List<String> {
         return transaction(db) {
