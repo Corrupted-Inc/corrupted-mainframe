@@ -4,6 +4,7 @@ import com.github.corruptedinc.corruptedmainframe.Config
 import com.github.corruptedinc.corruptedmainframe.audio.Audio
 import com.github.corruptedinc.corruptedmainframe.commands.Commands
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.plugin.Plugin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import net.dv8tion.jda.api.JDABuilder
@@ -17,6 +18,8 @@ import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.requests.GatewayIntent
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
+import java.io.File
+import java.net.URLClassLoader
 import java.time.Instant
 import java.util.*
 import java.util.logging.Logger
@@ -31,6 +34,7 @@ class Bot(val config: Config) {
     val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver).apply { useNestedTransactions = true })
     val audio = Audio(this)
     val buttonListeners = mutableListOf<(ButtonClickEvent) -> Unit>()
+    val plugins = mutableListOf<Plugin>()
 
     init {
         Runtime.getRuntime().addShutdownHook(Thread {
@@ -38,9 +42,28 @@ class Bot(val config: Config) {
             audio.gracefulShutdown()
             log.info("Finished, exiting")
         })
+
+        val pluginsDir = File("plugins")
+        // Create plugin dir if it doesn't exist
+        pluginsDir.mkdir()
+        val pluginFiles = pluginsDir.listFiles { file -> file.endsWith(".jar") }
+        for (plugin in pluginFiles ?: emptyArray()) {
+            try {
+                val loader = URLClassLoader.newInstance(arrayOf(plugin.toURI().toURL()), this::class.java.classLoader)
+                val clazz = Class.forName("PluginKt", true, loader)
+                val loaded = clazz.constructors.first().newInstance() as Plugin
+                plugins.add(loaded)
+                loaded.load()
+            } catch (e: Exception) {
+                log.severe("Error loading plugin '${plugin.nameWithoutExtension}'!")
+                log.severe(e.stackTraceToString())
+            }
+        }
+
         listeners.add(object : ListenerAdapter() {
             override fun onReady(event: ReadyEvent) {
                 log.info("Logged in as ${event.jda.selfUser.asTag}")
+                plugins.forEach { it.botStarted() }
                 for (guild in jda.guilds) {
                     guild.loadMembers {
                         database.addLink(guild, it.user)
@@ -93,8 +116,9 @@ class Bot(val config: Config) {
     }
 
     private val commands = Commands(this)
-
     init {
+        plugins.forEach { it.registerCommands(commands.handler) }
+
         listeners.add(object : ListenerAdapter() {
             override fun onMessageReceived(event: MessageReceivedEvent) {
                 commands.handle(event.message)

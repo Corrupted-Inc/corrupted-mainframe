@@ -25,7 +25,7 @@ import kotlin.math.min
 import kotlin.random.Random
 
 class Commands(val bot: Bot) {
-    private val handler = CommandHandler<Message, MessageEmbed> { commandResult ->
+    val handler = CommandHandler<Message, MessageEmbed> { commandResult ->
         commandResult.sender.replyEmbeds(commandResult.value ?: return@CommandHandler).queue()
     }
 
