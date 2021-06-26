@@ -17,6 +17,7 @@ services:
       - db
     volumes:
       - ./config.json/:/root/config.json
+      - ./plugins:/root/plugins/
       - ./corrupted-mainframe.jar/:/root/corrupted-mainframe.jar
 
 volumes:

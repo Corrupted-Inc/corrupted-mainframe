@@ -9,3 +9,4 @@ transaction.log
 config.json
 bot/build/
 corrupted-mainframe.jar
+plugins

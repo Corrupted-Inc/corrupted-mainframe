@@ -9,6 +9,7 @@ music, and utilities.
  `git clone https://github.com/Corrupted-Inc/corrupted-mainframe.git`
 1. CD into the directory
 1. `./gradlew bot:jar` (linux/mac) or `gradlew.bat bot:jar` (windows)
+   `bot:assemble` will make a sources jar
 1. The output jar will be located at bot/build/libs/corrupted-mainframe.jar
 
 ## Configuration

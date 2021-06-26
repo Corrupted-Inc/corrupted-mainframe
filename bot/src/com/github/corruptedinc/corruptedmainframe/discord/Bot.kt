@@ -19,17 +19,21 @@ import net.dv8tion.jda.api.requests.GatewayIntent
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
+import java.net.URL
 import java.net.URLClassLoader
 import java.time.Instant
 import java.util.*
+import java.util.jar.JarEntry
+import java.util.jar.JarFile
 import java.util.logging.Logger
 import kotlin.concurrent.schedule
+
 
 class Bot(val config: Config) {
     val log: Logger = Logger.getLogger("bot logger")
     val listeners = MultiListener()
     val startTime: Instant = Instant.now()
-    val jda = JDABuilder.create(config.token, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS, GatewayIntent.GUILD_VOICE_STATES).addEventListeners(listeners).build()
+    val jda = JDABuilder.create(config.token, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS, GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES).addEventListeners(listeners).build()
     val scope = CoroutineScope(Dispatchers.Default)
     val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver).apply { useNestedTransactions = true })
     val audio = Audio(this)
@@ -46,14 +50,31 @@ class Bot(val config: Config) {
         val pluginsDir = File("plugins")
         // Create plugin dir if it doesn't exist
         pluginsDir.mkdir()
-        val pluginFiles = pluginsDir.listFiles { file -> file.endsWith(".jar") }
+        val pluginFiles = pluginsDir.listFiles()
         for (plugin in pluginFiles ?: emptyArray()) {
             try {
-                val loader = URLClassLoader.newInstance(arrayOf(plugin.toURI().toURL()), this::class.java.classLoader)
-                val clazz = Class.forName("PluginKt", true, loader)
-                val loaded = clazz.constructors.first().newInstance() as Plugin
-                plugins.add(loaded)
-                loaded.load()
+                val jar = JarFile(plugin)
+                val e = jar.entries()
+
+                val urls = arrayOf(URL("jar:file:" + plugin.path + "!/"))
+                val cl = URLClassLoader.newInstance(urls)
+
+                while (e.hasMoreElements()) {
+                    val je: JarEntry = e.nextElement()
+                    if (je.isDirectory || !je.name.endsWith(".class")) {
+                        continue
+                    }
+                    // -6 because of .class
+                    var className: String = je.name.substring(0, je.name.length - 6)
+                    className = className.replace('/', '.')
+                    val c: Class<*> = cl.loadClass(className)
+
+                    if (className == "com.plugin.Plugin") {
+                        val loaded = c.constructors.first().newInstance(this) as Plugin
+                        plugins.add(loaded)
+                        loaded.load()
+                    }
+                }
             } catch (e: Exception) {
                 log.severe("Error loading plugin '${plugin.nameWithoutExtension}'!")
                 log.severe(e.stackTraceToString())
