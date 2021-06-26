@@ -7,13 +7,24 @@ import org.jetbrains.exposed.dao.LongEntityClass
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.SchemaUtils.withDataBaseLock
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.Instant
 
 class ExposedDatabase(val db: Database) {
     init {
-        transaction(db) {
-            SchemaUtils.create(GuildMs, UserMs, GuildUsers, Mutes, MutedUserRoles, MusicStates, PlaylistEntries, AutoRoleMessages, AutoRoles)
+        trnsctn {
+            SchemaUtils.createMissingTablesAndColumns(
+                GuildMs,
+                UserMs,
+                GuildUsers,
+                Mutes,
+                MutedUserRoles,
+                MusicStates,
+                PlaylistEntries,
+                AutoRoleMessages,
+                AutoRoles
+            )
         }
     }
 
@@ -31,6 +42,7 @@ class ExposedDatabase(val db: Database) {
     object UserMs : LongIdTable(name = "users") {
         val discordId = long("discord_id").index(isUnique = true)
         val botAdmin  = bool("admin")
+        val banned    = bool("banned").default(false)
     }
 
     class UserM(id: EntityID<Long>) : LongEntity(id) {
@@ -38,6 +50,7 @@ class ExposedDatabase(val db: Database) {
 
         var discordId by UserMs.discordId
         var botAdmin  by UserMs.botAdmin
+        var banned    by UserMs.banned
         var guilds    by GuildM via GuildUsers
     }
 
@@ -134,7 +147,7 @@ class ExposedDatabase(val db: Database) {
         var role    by AutoRoles.role
     }
 
-    fun user(user: User) = transaction(db) { UserM.find { UserMs.discordId eq user.idLong }.firstOrNull() ?: UserM.new { discordId = user.idLong; botAdmin = false } }
+    fun user(user: User) = transaction(db) { UserM.find { UserMs.discordId eq user.idLong }.firstOrNull() ?: UserM.new { discordId = user.idLong; botAdmin = false; banned = false } }
 
     fun guild(guild: Guild): GuildM {
         return transaction(db) { GuildM.find { GuildMs.discordId eq guild.idLong }.firstOrNull() ?: GuildM.new { discordId = guild.idLong; prefix = "!" } }
@@ -145,7 +158,7 @@ class ExposedDatabase(val db: Database) {
     fun guilds() = transaction(db) { GuildM.all().toList() }
 
     fun addUser(user: User, guilds: List<Guild>): UserM {
-        val userm = transaction(db) { UserM.new { botAdmin = false; discordId = user.idLong } }
+        val userm = transaction(db) { UserM.new { botAdmin = false; discordId = user.idLong; banned = false } }
         val guildms = mutableListOf<GuildM>()
         for (guild in guilds) {
             guildms.add(guild(guild))
@@ -367,6 +380,22 @@ class ExposedDatabase(val db: Database) {
             }
         }
     }
+
+    fun ban(user: User) {
+        trnsctn {
+            val userm = user(user)
+            userm.banned = true
+        }
+    }
+
+    fun unban(user: User) {
+        trnsctn {
+            val userm = user(user)
+            userm.banned = false
+        }
+    }
+
+    fun banned(user: User) = user(user).banned
 
     fun <T> trnsctn(block: Transaction.() -> T): T = transaction(db, block)
 }

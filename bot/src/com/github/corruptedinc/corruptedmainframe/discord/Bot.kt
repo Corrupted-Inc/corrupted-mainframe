@@ -69,6 +69,7 @@ class Bot(val config: Config) {
             }
 
             override fun onMessageReactionAdd(event: MessageReactionAddEvent) {
+                if (event.user?.let { database.banned(it) } == true) return
                 val roleId = database.autoRole(event.messageIdLong, event.reactionEmote) ?: return
                 val role = event.guild.getRoleById(roleId) ?: return
 
@@ -83,6 +84,7 @@ class Bot(val config: Config) {
             }
 
             override fun onMessageReactionRemove(event: MessageReactionRemoveEvent) {
+                if (event.user?.let { database.banned(it) } == true) return
                 val roleId = database.autoRole(event.messageIdLong, event.reactionEmote) ?: return
                 val role = event.guild.getRoleById(roleId) ?: return
                 event.guild.removeRoleFromMember(event.userId, role).queue()
@@ -99,6 +101,7 @@ class Bot(val config: Config) {
             }
 
             override fun onButtonClick(event: ButtonClickEvent) {
+                if (database.banned(event.user)) return
                 buttonListeners.forEach { it(event) }
             }
         })

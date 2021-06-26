@@ -362,6 +362,28 @@ class Commands(val bot: Bot) {
         )
 
         handler.register(
+            CommandBuilder<Message, MessageEmbed>("globalban").arg(UserArg("user"))
+                .help("Bans a user from using the bot")
+                .ran { sender, args ->
+                    if (!bot.database.user(sender.author).botAdmin) return@ran InternalCommandResult(unauthorized, false)
+                    val user = args["user"] as? User ?: return@ran InternalCommandResult(embed("Couldn't find the user."), false)
+                    bot.database.ban(user)
+                    return@ran InternalCommandResult(embed("Banned ${user.asMention}"), true)
+                }
+        )
+
+        handler.register(
+            CommandBuilder<Message, MessageEmbed>("globalunban").arg(UserArg("user"))
+                .help("Unbans a user from using the bot")
+                .ran { sender, args ->
+                    if (!bot.database.user(sender.author).botAdmin) return@ran InternalCommandResult(unauthorized, false)
+                    val user = args["user"] as? User ?: return@ran InternalCommandResult(embed("Couldn't find the user."), false)
+                    bot.database.unban(user)
+                    return@ran InternalCommandResult(embed("Unbanned ${user.asMention}"), true)
+                }
+        )
+
+        handler.register(
             CommandBuilder<Message, MessageEmbed>("unadmin", "deadmin").arg(UserArg("user"))
                 .help("Removes a user's bot admin status.")
                 .ran { sender, args ->
@@ -420,6 +442,7 @@ class Commands(val bot: Bot) {
 
     fun handle(message: Message) {
         bot.scope.launch {
+            if (bot.database.banned(message.author)) return@launch
             try {
                 val prefix = bot.database.guild(message.guild).prefix
                 handler.handleAndSend(prefix, message.contentRaw, message)
