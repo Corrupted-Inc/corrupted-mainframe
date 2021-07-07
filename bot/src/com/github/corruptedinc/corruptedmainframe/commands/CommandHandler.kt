@@ -1,10 +1,15 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
+import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.*
 import kotlin.reflect.KClass
 
-typealias Runner<S, D> = suspend (sender: S, args: Map<String, Any>) -> CommandHandler.InternalCommandResult<D>
+typealias Runner<S, D> = suspend (sender: S, args: Map<String, Any>) -> InternalCommandResult<D>
 
-typealias Sender<S, D> = (CommandHandler.CommandResult<S, D>) -> Unit
+typealias Sender<S, D> = (CommandResult<S, D>) -> Unit
+
+typealias ErrorConverter<S, D> = (Command<S, D>, CommandException) -> D
+
+class CommandException(cause: String) : Exception(cause)
 
 /**
  * A system for handling commands.  [S] is usually some way of representing the source of the command, and [D] is the
@@ -19,7 +24,7 @@ typealias Sender<S, D> = (CommandHandler.CommandResult<S, D>) -> Unit
  * }
  * ```
  */
-open class CommandHandler<S, D>(val send: Sender<S, D>) {
+open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverter<S, D>) {
     val commands = mutableListOf<Command<S, D>>()
 
     data class CommandCategory(val name: String, val subcategories: List<CommandCategory>)
@@ -184,7 +189,15 @@ open class CommandHandler<S, D>(val send: Sender<S, D>) {
             map[usedArgs.last().name] = varargAccumulator
         }
         found.validator?.invoke(sender, map)?.let { return CommandResult(sender, it, false, found) }
-        return try { found.runner(sender, map).run { CommandResult(sender, value, success, found) } } catch (e: Exception) { e.printStackTrace(); CommandResult(sender, null, false, found) }
+        return try {
+            found.runner(sender, map)
+                .run { CommandResult(sender, value, success, found) }
+        } catch (e: CommandException) {
+            CommandResult(sender, error(found, e), false, found)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            CommandResult(sender, null, false, found)
+        }
     }
 
     suspend fun handleAndSend(prefix: String, input: String, sender: S): CommandResult<S, D> {

@@ -25,9 +25,9 @@ import kotlin.math.min
 import kotlin.random.Random
 
 class Commands(val bot: Bot) {
-    val handler = CommandHandler<Message, MessageEmbed> { commandResult ->
-        commandResult.sender.replyEmbeds(commandResult.value ?: return@CommandHandler).queue()
-    }
+    val handler = CommandHandler<Message, MessageEmbed>({ commandResult ->
+        commandResult.sender.replyEmbeds(commandResult.value ?: return@CommandHandler).complete()
+    }, { _, exception -> embed("Error", description = exception.message) })
 
     companion object {
         private fun String.stripPings() = this.replace("@", "\\@")
@@ -108,15 +108,16 @@ class Commands(val bot: Bot) {
                             if (event.button?.id == "help-prev") {
                                 p--
                                 p = p.coerceIn(helpPages.indices)
-                                event.editMessageEmbeds(helpPage(p.coerceIn(helpPages.indices))).setActionRow(actionRow()).queue()
+                                event.editMessageEmbeds(helpPage(p.coerceIn(helpPages.indices))).setActionRow(actionRow()).complete()
                             } else {
                                 p++
                                 p = p.coerceIn(helpPages.indices)
-                                event.editMessageEmbeds(helpPage(p)).setActionRow(actionRow()).queue()
+                                event.editMessageEmbeds(helpPage(p)).setActionRow(actionRow()).complete()
                             }
                         } else if (event.messageId == message.id) {
                             event.message?.embeds?.let { event.editMessageEmbeds(it) }
                         }
+                        Unit
                     }
                     bot.buttonListeners.add(lambda)
                     bot.scope.launch {
@@ -160,7 +161,7 @@ class Commands(val bot: Bot) {
                     bot.database.addAutoRole(msg, reactionsMap)
 
                     for (reaction in reactionsMap) {
-                        msg.addReaction(reaction.key).queue()
+                        msg.addReaction(reaction.key).complete()
                     }
 
                     return@ran InternalCommandResult(embed("Successfully added ${reactionsMap.size} reaction roles:", content = reactionsMap.map { Field(it.key, sender.guild.getRoleById(it.value)?.name, false) }), true)
@@ -174,23 +175,29 @@ class Commands(val bot: Bot) {
                     val count = (args["count"] as? Int ?: 10).coerceIn(1, 1000) + 1
                     bot.scope.launch {
                         delay(2000)
-                        var yetToDelete = count
-                        while (yetToDelete > 0) {
-                            val messages = sender.channel.history.retrievePast(min(100, yetToDelete)).complete()
-                            if (messages.size == 1) {
-                                messages.first().delete().complete()
-                            } else {
-                                val bulkDeletable = messages.filter { TimeUtil.getDiscordTimestamp(System.currentTimeMillis() - 14 * 24 * 60 * 60 * 1000) < MiscUtil.parseSnowflake(it.id) }
-                                sender.textChannel.deleteMessages(bulkDeletable).complete()
-                                for (item in messages - bulkDeletable) {
-                                    item.delete().queue()
-                                    delay(100)
+                        try {
+                            var yetToDelete = count
+                            while (yetToDelete > 0) {
+                                val messages = sender.channel.history.retrievePast(min(100, yetToDelete)).complete()
+                                if (messages.size == 1) {
+                                    messages.first().delete().complete()
+                                } else {
+                                    val bulkDeletable = messages.filter {
+                                        TimeUtil.getDiscordTimestamp(System.currentTimeMillis() - 14 * 24 * 60 * 60 * 1000) < MiscUtil.parseSnowflake(
+                                            it.id
+                                        )
+                                    }
+                                    sender.textChannel.deleteMessages(bulkDeletable).complete()
+                                    for (item in messages - bulkDeletable) {
+                                        item.delete().complete()
+                                        delay(100)
+                                    }
                                 }
+                                if (messages.size != min(100, yetToDelete)) break
+                                yetToDelete -= messages.size
+                                delay(1100)
                             }
-                            if (messages.size != min(100, yetToDelete)) break
-                            yetToDelete -= messages.size
-                            delay(1100)
-                        }
+                        } catch (ignored: Exception) { }
                     }
                     return@ran InternalCommandResult(embed("Purging ${count - 1} messages..."), true)
             }

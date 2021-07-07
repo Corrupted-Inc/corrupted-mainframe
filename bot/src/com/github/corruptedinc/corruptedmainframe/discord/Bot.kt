@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.events.ReadyEvent
+import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent
 import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
@@ -52,6 +53,7 @@ class Bot(val config: Config) {
         pluginsDir.mkdir()
         val pluginFiles = pluginsDir.listFiles()
         for (plugin in pluginFiles ?: emptyArray()) {
+            if (!plugin.name.endsWith(".jar")) continue
             try {
                 val jar = JarFile(plugin)
                 val e = jar.entries()
@@ -132,6 +134,12 @@ class Bot(val config: Config) {
                 val roleId = database.autoRole(event.messageIdLong, event.reactionEmote) ?: return
                 val role = event.guild.getRoleById(roleId) ?: return
                 event.guild.removeRoleFromMember(event.userId, role).queue()
+            }
+
+            override fun onGuildJoin(event: GuildJoinEvent) {
+                event.guild.loadMembers {
+                    database.addLink(event.guild, it.user)
+                }
             }
         })
     }
