@@ -42,17 +42,18 @@ class Commands(val bot: Bot) {
             authorUrl: String? = null,
             timestamp: TemporalAccessor? = null,
             color: Color? = null,
-            description: String? = null
+            description: String? = null,
+            stripPings: Boolean = true
         ): MessageEmbed {
             val builder = EmbedBuilder()
             builder.setTitle(title, url)
-            builder.fields.addAll(content.map { Field(it.name?.stripPings(), it.value?.stripPings(), it.isInline) })
+            builder.fields.addAll(if (stripPings) content.map { Field(it.name?.stripPings(), it.value?.stripPings(), it.isInline) } else content)
             builder.setImage(imgUrl)
             builder.setThumbnail(thumbnail)
             builder.setAuthor(author, authorUrl)
             builder.setTimestamp(timestamp)
             builder.setColor(color)
-            builder.setDescription(description?.stripPings())
+            builder.setDescription(if (stripPings) description?.stripPings() else description)
             return builder.build()
         }
     }
@@ -444,12 +445,17 @@ class Commands(val bot: Bot) {
             }
         )
 
+        handler.register(
+            CommandBuilder<Message, MessageEmbed>("level").args(UserArg("user", true)).ran { sender, args ->
+                TODO()
+            }
+        )
+
         registerAudioCommands(bot, handler)
     }
 
     fun handle(message: Message) {
         bot.scope.launch {
-            if (bot.database.banned(message.author)) return@launch
             try {
                 val prefix = bot.database.guild(message.guild).prefix
                 handler.handleAndSend(prefix, message.contentRaw, message)

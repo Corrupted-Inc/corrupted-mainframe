@@ -23,7 +23,8 @@ class ExposedDatabase(val db: Database) {
                 MusicStates,
                 PlaylistEntries,
                 AutoRoleMessages,
-                AutoRoles
+                AutoRoles,
+                Points
             )
         }
     }
@@ -54,6 +55,21 @@ class ExposedDatabase(val db: Database) {
         var guilds    by GuildM via GuildUsers
     }
 
+    object Points : LongIdTable(name = "points") {
+        val user   = reference("user", UserMs)
+        val guild  = reference("guild", GuildMs)
+        val points = double("points")
+    }
+
+    class Point(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<Point>(Points)
+
+        var user   by UserM referencedOn Points.user
+        var guild  by GuildM referencedOn Points.guild
+        var points by Points.points
+    }
+
+    //todo: this isn't needed, remove
     object GuildUsers : Table() {
         val guild = reference("guild", GuildMs)
         val user = reference("user", UserMs)
@@ -156,6 +172,50 @@ class ExposedDatabase(val db: Database) {
     fun users() = transaction(db) { UserM.all().toList() }
 
     fun guilds() = transaction(db) { GuildM.all().toList() }
+
+    fun points(user: User, guild: Guild): Double = trnsctn {
+        val u = user(user)
+        val g = guild(guild)
+        val found = Point.find { (Points.guild eq g.id) and (Points.user eq u.id) }.firstOrNull() ?: Point.new {
+            this.guild = g
+            this.user = u
+            this.points = 0.0
+        }
+
+        return@trnsctn found.points
+    }
+
+    fun addPoints(user: User, guild: Guild, points: Double): Double {
+        return trnsctn {
+            val u = user(user)
+            val g = guild(guild)
+
+            val found = Point.find { (Points.guild eq g.id) and (Points.user eq u.id) }.firstOrNull() ?: Point.new {
+                this.guild = g
+                this.user = u
+                this.points = 0.0
+            }
+
+            found.points += points
+
+            found.points
+        }
+    }
+
+    fun setPoints(user: User, guild: Guild, points: Double) {
+        trnsctn {
+            val u = user(user)
+            val g = guild(guild)
+
+            val found = Point.find { (Points.guild eq g.id) and (Points.user eq u.id) }.firstOrNull() ?: Point.new {
+                this.guild = g
+                this.user = u
+                this.points = 0.0
+            }
+
+            found.points = points
+        }
+    }
 
     fun addUser(user: User, guilds: List<Guild>): UserM {
         val userm = transaction(db) { UserM.new { botAdmin = false; discordId = user.idLong; banned = false } }

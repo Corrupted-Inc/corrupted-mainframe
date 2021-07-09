@@ -16,3 +16,5 @@ fun weightedRandom(values: Iterable<Int>, weights: Iterable<Double>): Int {
     val r = Random.nextDouble(accumulator)
     return list.first { it.second > r }.first
 }
+
+fun Double.sq() = this * this

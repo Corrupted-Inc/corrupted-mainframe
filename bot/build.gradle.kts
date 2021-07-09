@@ -16,7 +16,7 @@ dependencies {
     implementation(group = "org.postgresql", name = "postgresql", version = "42.2.16")
     implementation(group = "org.apache.logging.log4j", name = "log4j", version = "2.14.1")
     implementation(group = "org.slf4j", name = "slf4j-log4j12", version = "1.7.30")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.4.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.5.0")
     implementation(group = "org.jetbrains.exposed", name = "exposed-dao", version = "0.31.1")
     implementation(group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "0.31.1")
     implementation("com.sedmelluq:lavaplayer:1.3.76")

@@ -3,16 +3,19 @@ package com.github.corruptedinc.corruptedmainframe.discord
 import com.github.corruptedinc.corruptedmainframe.Config
 import com.github.corruptedinc.corruptedmainframe.audio.Audio
 import com.github.corruptedinc.corruptedmainframe.commands.Commands
+import com.github.corruptedinc.corruptedmainframe.commands.Leveling
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.plugin.Plugin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent
 import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
+import net.dv8tion.jda.api.events.message.guild.GuildMessageReceivedEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
@@ -38,6 +41,7 @@ class Bot(val config: Config) {
     val scope = CoroutineScope(Dispatchers.Default)
     val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver).apply { useNestedTransactions = true })
     val audio = Audio(this)
+    val leveling = Leveling(this)
     val buttonListeners = mutableListOf<(ButtonClickEvent) -> Unit>()
     val plugins = mutableListOf<Plugin>()
 
@@ -87,11 +91,6 @@ class Bot(val config: Config) {
             override fun onReady(event: ReadyEvent) {
                 log.info("Logged in as ${event.jda.selfUser.asTag}")
                 plugins.forEach { it.botStarted() }
-                for (guild in jda.guilds) {
-                    guild.loadMembers {
-                        database.addLink(guild, it.user)
-                    }
-                }
 
                 Timer().schedule(0, 15_000L) {
                     for (mute in database.expiringMutes()) {
@@ -149,8 +148,13 @@ class Bot(val config: Config) {
         plugins.forEach { it.registerCommands(commands.handler) }
 
         listeners.add(object : ListenerAdapter() {
-            override fun onMessageReceived(event: MessageReceivedEvent) {
+            override fun onGuildMessageReceived(event: GuildMessageReceivedEvent) {
+                if (database.banned(event.author)) return
+                if (event.author == jda.selfUser) return
                 commands.handle(event.message)
+                scope.launch {
+                    leveling.addPoints(event.author, Leveling.POINTS_PER_MESSAGE, event.channel)
+                }
             }
 
             override fun onButtonClick(event: ButtonClickEvent) {

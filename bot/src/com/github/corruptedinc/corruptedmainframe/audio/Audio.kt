@@ -99,22 +99,23 @@ class Audio(val bot: Bot) {
     }
 
     inner class AudioState {
-        val channel: VoiceChannel
+        val channel get() = bot.jda.getVoiceChannelById(channelId)
         private val player: AudioPlayerSendHandler
         var playlistPos: Long
         val playlistCount get() = bot.database.playlistEntryCount(databaseState)
+        val channelId: Long
 
         constructor(channel: VoiceChannel, player: AudioPlayerSendHandler, playlist: MutableList<AudioTrack>, position: Long) {
+            channelId = channel.idLong
             playlistCache = playlist.map { it.info.uri }
             this.databaseState = bot.database.createMusicState(channel, playlistCache)
-            this.channel = channel
             this.player = player
             this.playlistPos = position
             currentlyPlaying.add(this)
         }
 
         constructor(databaseState: ExposedDatabase.MusicState) {
-            channel = bot.jda.getVoiceChannelById(transaction(bot.database.db) { databaseState.channel })!!
+            channelId = transaction(bot.database.db) { databaseState.channel }
             player = AudioPlayerSendHandler(playerManager.createPlayer())
 
             player.audioPlayer.addListener(object : AudioEventAdapter() {
@@ -125,12 +126,12 @@ class Audio(val bot: Bot) {
                 }
             })
 
-            channel.guild.audioManager.openAudioConnection(channel)
-            channel.guild.audioManager.connectionListener = object : ConnectionListener {
+            channel?.guild?.audioManager?.openAudioConnection(channel)
+            channel?.guild?.audioManager?.connectionListener = object : ConnectionListener {
                 override fun onStatusChange(status: ConnectionStatus) {
                     if (status == ConnectionStatus.CONNECTED) {
-                        channel.guild.audioManager.isSelfDeafened = true
-                        channel.guild.audioManager.sendingHandler = player
+                        channel?.guild?.audioManager?.isSelfDeafened = true
+                        channel?.guild?.audioManager?.sendingHandler = player
                         bot.scope.launch { playCurrent() }
                     }
                 }
@@ -212,7 +213,7 @@ class Audio(val bot: Bot) {
 
         fun destroy() {
             bot.database.clearMusicState(databaseState)
-            channel.guild.audioManager.closeAudioConnection()
+            channel?.guild?.audioManager?.closeAudioConnection()
             currentlyPlaying.remove(this)
         }
 
