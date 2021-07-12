@@ -445,11 +445,11 @@ class Commands(val bot: Bot) {
             }
         )
 
-        handler.register(
-            CommandBuilder<Message, MessageEmbed>("level").args(UserArg("user", true)).ran { sender, args ->
-                TODO()
-            }
-        )
+//        handler.register(
+//            CommandBuilder<Message, MessageEmbed>("level").args(UserArg("user", true)).ran { sender, args ->
+//                TODO()
+//            }
+//        )
 
         registerAudioCommands(bot, handler)
     }

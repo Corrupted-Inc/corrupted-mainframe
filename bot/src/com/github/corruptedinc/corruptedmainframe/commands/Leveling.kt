@@ -37,6 +37,6 @@ class Leveling(private val bot: Bot) {
                     )
                 ).complete()
             }
-        } catch (e: ErrorResponseException) {}
+        } catch (e: Exception) {}
     }
 }
