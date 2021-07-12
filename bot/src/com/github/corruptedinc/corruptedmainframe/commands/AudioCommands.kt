@@ -325,7 +325,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
                             "pause" -> state.paused = !state.paused
                             "next" -> bot.scope.launch { state.next() }
                         }
-                        event.deferEdit()
+                        event.deferEdit().complete()
                     }
                 }
 
