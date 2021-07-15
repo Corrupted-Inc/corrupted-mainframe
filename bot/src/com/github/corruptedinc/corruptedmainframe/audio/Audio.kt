@@ -119,12 +119,12 @@ class Audio(val bot: Bot) {
         var playlistPos: Long
         val playlistCount get() = bot.database.playlistEntryCount(databaseState)
         var channelId: Long
-            set(value) { databaseState.channel = value; field = value }
+            set(value) { bot.database.trnsctn { databaseState.channel = value }; field = value }
 
         constructor(channel: VoiceChannel, player: AudioPlayerSendHandler, playlist: MutableList<AudioTrack>, position: Long) {
-            channelId = channel.idLong
             playlistCache = playlist.map { it.info.uri }
             this.databaseState = bot.database.createMusicState(channel, playlistCache)
+            channelId = channel.idLong
             this.player = player
             this.playlistPos = position
             currentlyPlaying.add(this)
