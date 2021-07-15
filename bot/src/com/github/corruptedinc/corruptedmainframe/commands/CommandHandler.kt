@@ -3,11 +3,13 @@ package com.github.corruptedinc.corruptedmainframe.commands
 import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.*
 import kotlin.reflect.KClass
 
-typealias Runner<S, D> = suspend (sender: S, args: Map<String, Any>) -> InternalCommandResult<D>
+typealias Runner<S, D> = suspend (sender: S, args: Map<String, Any?>) -> InternalCommandResult<D>
 
 typealias Sender<S, D> = (CommandResult<S, D>) -> Unit
 
 typealias ErrorConverter<S, D> = (Command<S, D>, CommandException) -> D
+
+typealias Parser<S> = (sender: S, inp: String) -> Triple<List<Argument<*>>, Map<String, Any?>, List<String>>
 
 class CommandException(cause: String) : Exception(cause)
 
@@ -50,7 +52,8 @@ open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverte
         val runner: Runner<S, D>,
         val overrideSend: Sender<S, D>?,
         val category: CommandCategory?,
-        val validator: ((sender: S, args: Map<String, Any>) -> D?)?
+        val validator: ((sender: S, args: Map<String, Any>) -> D?)?,
+        val parser: Parser<S>?
     ) {
         init {
             if (arguments.dropLast(1).any { it.vararg }) throw IllegalArgumentException("Only the last argument can be a vararg!  (in command $base)")
@@ -99,9 +102,10 @@ open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverte
             private val overrideSend: Sender<S, D>?
             private val help: String
             private val category: CommandCategory?
-            private val validator: ((sender: S, args: Map<String, Any>) -> D?)?
+            private val validator: ((sender: S, args: Map<String, Any?>) -> D?)?
+            private val parser: Parser<S>?
 
-            private constructor(base: List<String>, args: List<Argument<*>>, help: String, runner: Runner<S, D>?, overrideSend: Sender<S, D>?, category: CommandCategory?, validator: ((sender: S, args: Map<String, Any>) -> D?)?) {
+            private constructor(base: List<String>, args: List<Argument<*>>, help: String, runner: Runner<S, D>?, overrideSend: Sender<S, D>?, category: CommandCategory?, validator: ((sender: S, args: Map<String, Any?>) -> D?)?, parser: Parser<S>?) {
                 this.base = base
                 this.args = args
                 this.runner = runner
@@ -109,6 +113,7 @@ open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverte
                 this.help = help
                 this.category = category
                 this.validator = validator
+                this.parser = parser
             }
 
             constructor(vararg base: String) {
@@ -119,38 +124,43 @@ open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverte
                 help = ""
                 category = null
                 validator = null
+                parser = null
             }
 
             fun arg(type: Argument<*>): CommandBuilder<S, D> {
-                return CommandBuilder(base, args.plus(type), help, runner, overrideSend, category, validator)
+                return CommandBuilder(base, args.plus(type), help, runner, overrideSend, category, validator, parser)
             }
 
             fun args(vararg type: Argument<*>): CommandBuilder<S, D> {
-                return CommandBuilder(base, args.plus(type), help, runner, overrideSend, category, validator)
+                return CommandBuilder(base, args.plus(type), help, runner, overrideSend, category, validator, parser)
             }
 
             fun ran(runner: Runner<S, D>): CommandBuilder<S, D> {
-                return CommandBuilder(base, args, help, runner, overrideSend, category, validator)
+                return CommandBuilder(base, args, help, runner, overrideSend, category, validator, parser)
             }
 
             fun sent(overrideSend: Sender<S, D>): CommandBuilder<S, D> {
-                return CommandBuilder(base, args, help, runner, overrideSend, category, validator)
+                return CommandBuilder(base, args, help, runner, overrideSend, category, validator, parser)
             }
 
             fun help(text: String): CommandBuilder<S, D> {
-                return CommandBuilder(base, args, text, runner, overrideSend, category, validator)
+                return CommandBuilder(base, args, text, runner, overrideSend, category, validator, parser)
             }
 
             fun category(category: CommandCategory?): CommandBuilder<S, D> {
-                return CommandBuilder(base, args, help, runner, overrideSend, category, validator)
+                return CommandBuilder(base, args, help, runner, overrideSend, category, validator, parser)
             }
 
-            fun validator(validator: ((sender: S, args: Map<String, Any>) -> D?)?): CommandBuilder<S, D> {
-                return CommandBuilder(base, args, help, runner, overrideSend, category, validator)
+            fun validator(validator: ((sender: S, args: Map<String, Any?>) -> D?)?): CommandBuilder<S, D> {
+                return CommandBuilder(base, args, help, runner, overrideSend, category, validator, parser)
+            }
+
+            fun parser(parser: Parser<S>?): CommandBuilder<S, D> {
+                return CommandBuilder(base, args, help, runner, overrideSend, category, validator, parser)
             }
 
             fun build(): Command<S, D> {
-                return Command(base, args, help, runner!!, overrideSend, category, validator)
+                return Command(base, args, help, runner!!, overrideSend, category, validator, parser)
             }
         }
     }

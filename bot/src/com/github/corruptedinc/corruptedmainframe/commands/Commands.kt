@@ -1,9 +1,11 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
+import com.github.corruptedinc.corruptedmainframe.calculator.Calculator
 import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.*
 import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.Command.*
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.github.corruptedinc.corruptedmainframe.utils.admin
+import com.github.corruptedinc.corruptedmainframe.utils.containsAny
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.EmbedBuilder
@@ -18,6 +20,8 @@ import net.dv8tion.jda.api.utils.TimeUtil
 import org.jetbrains.exposed.sql.transactions.transaction
 import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
 import java.awt.Color
+import java.math.MathContext
+import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
 import java.time.temporal.TemporalAccessor
@@ -63,7 +67,7 @@ class Commands(val bot: Bot) {
 
         val unauthorized = EmbedBuilder().setTitle("Insufficient Permissions").setColor(Color(235, 70, 70)).build()
 
-        val adminValidator = { sender: Message, _: Map<String, Any> ->
+        val adminValidator = { sender: Message, _: Map<String, Any?> ->
             if (bot.database.user(sender.author).botAdmin || sender.member.admin) null else unauthorized
         }
 
@@ -443,6 +447,35 @@ class Commands(val bot: Bot) {
 
                     return@ran InternalCommandResult(embed("Unmuted ${user.asTag}"), true)
             }
+        )
+
+        val precisionArg = IntArg("precision", optional = true)
+        val expArg = StringArg("expression")
+        handler.register(
+            CommandBuilder<Message, MessageEmbed>("math", "eval" /* >:) */).args(precisionArg, expArg).help("Solves a given expression with n digits of precision.")  // todo custom parser support so it doesn't need quotes
+                .parser { _, inp ->
+                    var precision = 20
+                    var precisionSpecified = false
+                    if(inp.matches("\\d+ [^+\\-*/^].*".toRegex())) {
+                        precision = inp.substringBefore(" ").toInt()
+                        precisionSpecified = true
+                    }
+                    val expression = inp.substringAfter(" ")
+                    return@parser Triple(listOf(precisionArg, expArg), mapOf("precision" to precision, "expression" to expression), listOf(if (precisionSpecified) precision.toString() else "", expression))
+                }
+                .ran { _, args ->
+                    val exp = (args["expression"] as String).replaceBefore("=", "").removePrefix(" ")  // for now variables are not allowed
+                    if (exp.containsAny(listOf("sqrt", "sin", "cos", "tan"))) {
+                        throw CommandException("This is a very rudimentary calculator that does not support anything except `+`, `-`, `*`, `/`, and `^`.")
+                    }
+                    val precision = (args["precision"] as? Int ?: 20).coerceIn(2, 512)
+                    try {
+                        val result = Calculator(MathContext(precision, RoundingMode.HALF_UP)).evaluate(exp)
+                        return@ran InternalCommandResult(embed("Result", description = "$exp = ${result.toPlainString()}"), true)
+                    } catch (e: Exception) {
+                        throw CommandException("Failed to evaluate '$exp'!")
+                    }
+                }
         )
 
 //        handler.register(

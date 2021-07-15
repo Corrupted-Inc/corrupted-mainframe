@@ -24,6 +24,9 @@ import net.dv8tion.jda.api.audio.hooks.ConnectionListener
 import net.dv8tion.jda.api.audio.hooks.ConnectionStatus
 import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.entities.VoiceChannel
+import net.dv8tion.jda.api.events.ReadyEvent
+import net.dv8tion.jda.api.events.guild.voice.GuildVoiceMoveEvent
+import net.dv8tion.jda.api.hooks.ListenerAdapter
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
@@ -33,17 +36,29 @@ class Audio(val bot: Bot) {
     val currentlyPlaying = mutableSetOf<AudioState>()
 
     init {
-        bot.scope.launch {
-            delay(10_000L)
-            for (item in bot.database.musicStates()) {
-                if (bot.jda.guilds.any { it.idLong == bot.database.trnsctn { item.guild.discordId } }) {  // Because sharding, only restart playing for guilds that it's actually connected to
-                    currentlyPlaying.add(AudioState(item))
+        bot.listeners.add(object : ListenerAdapter() {
+            override fun onReady(event: ReadyEvent) {
+                for (item in bot.database.musicStates()) {
+                    if (bot.jda.guilds.any { it.idLong == bot.database.trnsctn { item.guild.discordId } }) {  // Because sharding, only restart playing for guilds that it's actually connected to
+                        currentlyPlaying.add(AudioState(item))
+                    }
                 }
             }
-        }
+
+            override fun onGuildVoiceMove(event: GuildVoiceMoveEvent) {
+                if (event.entity.user == bot.jda.selfUser) {
+                    val state = currentlyPlaying.find { it.channelId == event.channelLeft.idLong }
+                    if (state == null) {
+                        event.guild.audioManager.closeAudioConnection()
+                        return
+                    }
+                    state.channelId = event.channelJoined.idLong
+                }
+            }
+        })
     }
 
-    val cache: Cache<String, List<AudioTrack>> = CacheBuilder.newBuilder().maximumSize(1024).expireAfterWrite(10, TimeUnit.MINUTES).build(object : CacheLoader<String, List<AudioTrack>>() {
+    private val cache: Cache<String, List<AudioTrack>> = CacheBuilder.newBuilder().maximumSize(1024).expireAfterWrite(10, TimeUnit.MINUTES).build(object : CacheLoader<String, List<AudioTrack>>() {
         override fun load(key: String): List<AudioTrack> {
             return runBlocking { load(key, nocache = true) }
         }
@@ -103,7 +118,8 @@ class Audio(val bot: Bot) {
         private val player: AudioPlayerSendHandler
         var playlistPos: Long
         val playlistCount get() = bot.database.playlistEntryCount(databaseState)
-        val channelId: Long
+        var channelId: Long
+            set(value) { databaseState.channel = value; field = value }
 
         constructor(channel: VoiceChannel, player: AudioPlayerSendHandler, playlist: MutableList<AudioTrack>, position: Long) {
             channelId = channel.idLong
@@ -126,18 +142,22 @@ class Audio(val bot: Bot) {
                 }
             })
 
-            channel?.guild?.audioManager?.openAudioConnection(channel)
-            channel?.guild?.audioManager?.connectionListener = object : ConnectionListener {
-                override fun onStatusChange(status: ConnectionStatus) {
-                    if (status == ConnectionStatus.CONNECTED) {
-                        channel?.guild?.audioManager?.isSelfDeafened = true
-                        channel?.guild?.audioManager?.sendingHandler = player
-                        bot.scope.launch { playCurrent() }
+            try {
+                channel?.guild?.audioManager?.openAudioConnection(channel)
+                channel?.guild?.audioManager?.connectionListener = object : ConnectionListener {
+                    override fun onStatusChange(status: ConnectionStatus) {
+                        if (status == ConnectionStatus.CONNECTED) {
+                            channel?.guild?.audioManager?.isSelfDeafened = true
+                            channel?.guild?.audioManager?.sendingHandler = player
+                            bot.scope.launch { playCurrent() }
+                        }
                     }
-                }
 
-                override fun onPing(ping: Long) {}
-                override fun onUserSpeaking(user: User, speaking: Boolean) {}
+                    override fun onPing(ping: Long) {}
+                    override fun onUserSpeaking(user: User, speaking: Boolean) {}
+                }
+            } catch (e: Exception) {
+                destroy()
             }
 
             playlistPos = databaseState.playlistPos
@@ -212,7 +232,9 @@ class Audio(val bot: Bot) {
         }
 
         fun destroy() {
-            bot.database.clearMusicState(databaseState)
+            try {
+                bot.database.clearMusicState(databaseState)
+            } catch (e: Exception) {}
             channel?.guild?.audioManager?.closeAudioConnection()
             currentlyPlaying.remove(this)
         }

@@ -1,9 +1,10 @@
 package com.github.corruptedinc.corruptedmainframe.utils
 
 import java.time.Duration
+import java.util.*
 import kotlin.math.min
 
-fun Duration.toHumanReadable() = toString().removePrefix("PT").replace("(\\d[HMS])(?!$)".toRegex(), "$1 ").toLowerCase()
+fun Duration.toHumanReadable() = toString().removePrefix("PT").replace("(\\d[HMS])(?!$)".toRegex(), "$1 ").lowercase(Locale.getDefault())
 
 @JvmName("levenshtein1")
 fun CharSequence.levenshtein(other: CharSequence) = levenshtein(this, other)
@@ -20,10 +21,10 @@ fun levenshtein(lhs : CharSequence, rhs : CharSequence) : Int {
     var cost = Array(lhsLength) { it }
     var newCost = Array(lhsLength) { 0 }
 
-    for (i in 1..rhsLength-1) {
+    for (i in 1 until rhsLength) {
         newCost[0] = i
 
-        for (j in 1..lhsLength-1) {
+        for (j in 1 until lhsLength) {
             val match = if(lhs[j - 1] == rhs[i - 1]) 0 else 1
 
             val costReplace = cost[j - 1] + match
@@ -40,3 +41,5 @@ fun levenshtein(lhs : CharSequence, rhs : CharSequence) : Int {
 
     return cost[lhsLength - 1]
 }
+
+fun String.containsAny(items: Iterable<String>) = items.any { it in this }
