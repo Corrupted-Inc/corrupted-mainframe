@@ -60,7 +60,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     }
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("play", "queue")
+        CommandBuilder<Message, MessageEmbed>("play", "queue", "p")
             .args(StringArg("source"), StringArg("channel", optional = true))
             .help("Plays a song.  Give the URL/name in double quotes, and optionally the voice channel name in double quotes.")
             .ran { sender, args ->
@@ -228,7 +228,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("queue")
+        CommandBuilder<Message, MessageEmbed>("queue", "q")
             .help("Shows the queue.")
             .ran { sender, _ ->
             val state = bot.audio.currentlyPlaying.singleOrNull { it.channel?.guild == sender.guild }
