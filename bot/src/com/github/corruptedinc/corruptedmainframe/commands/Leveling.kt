@@ -27,7 +27,7 @@ class Leveling(private val bot: Bot) {
             val previousLevel = level(user, channel.guild).toInt()
             bot.database.addPoints(user, channel.guild, points)
             val level = level(user, channel.guild).toInt()
-            if (level > previousLevel) {
+            if (level > previousLevel && bot.database.popups(user, channel.guild)) {
                 channel.sendMessageEmbeds(
                     embed(
                         "Level Up",

@@ -478,6 +478,15 @@ class Commands(val bot: Bot) {
                 }
         )
 
+        handler.register(
+            CommandBuilder<Message, MessageEmbed>("popups").arg(StringArg("enabled"))
+                .ran { sender, args ->
+                    val enabled = (args["enabled"] as? String)?.lowercase() == "true"
+                    bot.database.setPopups(sender.author, sender.guild, enabled)
+                    InternalCommandResult(embed("Set level popups to $enabled"), true)
+                }
+        )
+
 //        handler.register(
 //            CommandBuilder<Message, MessageEmbed>("level").args(UserArg("user", true)).ran { sender, args ->
 //                TODO()

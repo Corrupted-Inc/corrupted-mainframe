@@ -59,6 +59,7 @@ class ExposedDatabase(val db: Database) {
         val user   = reference("user", UserMs)
         val guild  = reference("guild", GuildMs)
         val points = double("points")
+        val popups = bool("popups").default(false)
     }
 
     class Point(id: EntityID<Long>) : LongEntity(id) {
@@ -67,6 +68,7 @@ class ExposedDatabase(val db: Database) {
         var user   by UserM referencedOn Points.user
         var guild  by GuildM referencedOn Points.guild
         var points by Points.points
+        var popups by Points.popups
     }
 
     //todo: this isn't needed, remove
@@ -166,7 +168,7 @@ class ExposedDatabase(val db: Database) {
     fun user(user: User) = transaction(db) { UserM.find { UserMs.discordId eq user.idLong }.firstOrNull() ?: UserM.new { discordId = user.idLong; botAdmin = false; banned = false } }
 
     fun guild(guild: Guild): GuildM {
-        return transaction(db) { GuildM.find { GuildMs.discordId eq guild.idLong }.firstOrNull() ?: GuildM.new { discordId = guild.idLong; prefix = "!" } }
+        return transaction(db) { GuildM.find { GuildMs.discordId eq guild.idLong }.firstOrNull() ?: GuildM.new { discordId = guild.idLong; prefix = "!"; leveling = true } }
     }
 
     fun users() = transaction(db) { UserM.all().toList() }
@@ -183,6 +185,33 @@ class ExposedDatabase(val db: Database) {
         }
 
         return@trnsctn found.points
+    }
+
+    fun popups(user: User, guild: Guild): Boolean = trnsctn {
+        val u = user(user)
+        val g = guild(guild)
+        val found = Point.find { (Points.guild eq g.id) and (Points.user eq u.id) }.firstOrNull() ?: Point.new {
+            this.guild = g
+            this.user = u
+            this.points = 0.0
+        }
+
+        return@trnsctn found.popups
+    }
+
+    fun setPopups(user: User, guild: Guild, popups: Boolean) {
+        trnsctn {
+            val u = user(user)
+            val g = guild(guild)
+
+            val found = Point.find { (Points.guild eq g.id) and (Points.user eq u.id) }.firstOrNull() ?: Point.new {
+                this.guild = g
+                this.user = u
+                this.points = 0.0
+            }
+
+            found.popups = popups
+        }
     }
 
     fun addPoints(user: User, guild: Guild, points: Double): Double {
@@ -228,7 +257,7 @@ class ExposedDatabase(val db: Database) {
     }
 
     fun addGuild(guild: Guild, users: List<User>): GuildM {
-        val guildm = transaction(db) { GuildM.new { prefix = "!"; discordId = guild.idLong } }
+        val guildm = transaction(db) { GuildM.new { prefix = "!"; discordId = guild.idLong; leveling = true } }
         val userms = mutableListOf<UserM>()
         for (user in users) {
             userms.add(user(user))
