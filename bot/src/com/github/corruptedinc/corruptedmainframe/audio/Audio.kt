@@ -2,7 +2,6 @@ package com.github.corruptedinc.corruptedmainframe.audio
 
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.PlaylistEntries
-import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.PlaylistEntry.Companion
 import com.google.common.cache.Cache
 import com.google.common.cache.CacheBuilder
 import com.google.common.cache.CacheLoader
@@ -38,11 +37,18 @@ class Audio(val bot: Bot) {
     val playerManager = DefaultAudioPlayerManager()
     val currentlyPlaying = mutableSetOf<AudioState>()
 
+    companion object {
+        private const val BUSYWAITING_DELAY = 50L
+        private const val MAX_CACHE_SIZE = 1024L
+        private const val CACHE_RET_MINUTES = 10L
+    }
+
     init {
         bot.listeners.add(object : ListenerAdapter() {
             override fun onReady(event: ReadyEvent) {
                 for (item in bot.database.musicStates()) {
-                    if (bot.jda.guilds.any { it.idLong == bot.database.trnsctn { item.guild.discordId } }) {  // Because sharding, only restart playing for guilds that it's actually connected to
+                    // Because sharding, only restart playing for guilds that it's actually connected to
+                    if (bot.jda.guilds.any { it.idLong == bot.database.trnsctn { item.guild.discordId } }) {
                         currentlyPlaying.add(AudioState(item))
                     }
                 }
@@ -61,12 +67,15 @@ class Audio(val bot: Bot) {
         })
     }
 
-    private val cache: Cache<String, List<AudioTrack>> = CacheBuilder.newBuilder().maximumSize(1024).expireAfterWrite(10, TimeUnit.MINUTES).build(object : CacheLoader<String, List<AudioTrack>>() {
+    private val cache: Cache<String, List<AudioTrack>> = CacheBuilder.newBuilder().maximumSize(MAX_CACHE_SIZE)
+        .expireAfterWrite(CACHE_RET_MINUTES, TimeUnit.MINUTES).build(object : CacheLoader<String, List<AudioTrack>>() {
         override fun load(key: String): List<AudioTrack> {
             return runBlocking { load(key, nocache = true) }
         }
     })
 
+    // TODO restructure into a function that takes cache into account and one that doesn't
+    @SuppressWarnings("ReturnCount")
     suspend fun load(source: String?, search: Boolean = false, nocache: Boolean = false): List<AudioTrack> {
         source ?: return emptyList()
         if (!nocache) {
@@ -98,7 +107,7 @@ class Audio(val bot: Bot) {
         })
 
         while (!done) {
-            delay(50L)
+            delay(BUSYWAITING_DELAY)
         }
         var tracks = track?.tracks ?: emptyList()
         if (search) {
@@ -108,7 +117,8 @@ class Audio(val bot: Bot) {
         return tracks
     }
 
-    fun createState(channel: VoiceChannel, player: AudioPlayerSendHandler, playlist: MutableList<AudioTrack>) = AudioState(channel, player, playlist, 0L)
+    fun createState(channel: VoiceChannel, player: AudioPlayerSendHandler, playlist: MutableList<AudioTrack>) =
+        AudioState(channel, player, playlist, 0L)
 
     fun gracefulShutdown() {
         for (state in currentlyPlaying) {
@@ -124,7 +134,8 @@ class Audio(val bot: Bot) {
         var channelId: Long
             set(value) { bot.database.trnsctn { databaseState.channel = value }; field = value }
 
-        constructor(channel: VoiceChannel, player: AudioPlayerSendHandler, playlist: MutableList<AudioTrack>, position: Long) {
+        constructor(channel: VoiceChannel, player: AudioPlayerSendHandler,
+                    playlist: MutableList<AudioTrack>, position: Long) {
             playlistCache = playlist.map { it.info.uri }
             this.databaseState = bot.database.createMusicState(channel, playlistCache)
             channelId = channel.idLong
@@ -145,6 +156,8 @@ class Audio(val bot: Bot) {
                 }
             })
 
+            // Not sure what kind of stuff can be thrown here
+            @Suppress("SwallowedException", "TooGenericExceptionCaught")
             try {
                 channel?.guild?.audioManager?.openAudioConnection(channel)
                 channel?.guild?.audioManager?.connectionListener = object : ConnectionListener {
@@ -156,7 +169,9 @@ class Audio(val bot: Bot) {
                         }
                     }
 
+                    @Suppress("EmptyFunctionBlock")
                     override fun onPing(ping: Long) {}
+                    @Suppress("EmptyFunctionBlock")
                     override fun onUserSpeaking(user: User, speaking: Boolean) {}
                 }
             } catch (e: Exception) {
@@ -181,15 +196,19 @@ class Audio(val bot: Bot) {
             set(value) { player.audioPlayer.volume = value }
 
         var progress get() = player.audioPlayer.playingTrack?.position
-            set(value) { if (value != null) { player.audioPlayer.playingTrack?.position = value.coerceIn(0..(currentlyPlayingTrack?.duration ?: 0)) } }
+            set(value) { if (value != null) { player.audioPlayer.playingTrack?.position =
+                value.coerceIn(0..(currentlyPlayingTrack?.duration ?: 0)) } }
 
         val currentlyPlayingTrack: AudioTrack? get() = player.audioPlayer.playingTrack
 
         suspend fun next(): Boolean {
-            val canProceed = playlistPos++.run { this >= 0 && this < transaction(bot.database.db) { databaseState.items.count() } }
+            val canProceed = playlistPos++.run { this >= 0 && this < transaction(bot.database.db) {
+                databaseState.items.count()
+            } }
 
             if (canProceed) {
-                bot.database.updateMusicState(databaseState, 0L, player.audioPlayer.isPaused, player.audioPlayer.volume, playlistPos)
+                bot.database.updateMusicState(databaseState, 0L,
+                    player.audioPlayer.isPaused, player.audioPlayer.volume, playlistPos)
                 playCurrent()
             } else {
                 destroy()
@@ -199,10 +218,13 @@ class Audio(val bot: Bot) {
         }
 
         suspend fun previous(): Boolean {
-            val canProceed = playlistPos--.run { this >= 0 && this < transaction(bot.database.db) { databaseState.items.count() } }
+            val canProceed = playlistPos--.run { this >= 0 && this < bot.database.trnsctn {
+                databaseState.items.count()
+            } }
 
             if (canProceed) {
-                bot.database.updateMusicState(databaseState, 0L, player.audioPlayer.isPaused, player.audioPlayer.volume, playlistPos)
+                bot.database.updateMusicState(databaseState, 0L, player.audioPlayer.isPaused,
+                    player.audioPlayer.volume, playlistPos)
                 playCurrent()
             } else {
                 destroy()
@@ -221,14 +243,11 @@ class Audio(val bot: Bot) {
             if (databaseState.playlistPos == playlistPos) {
                 player.audioPlayer.playingTrack.position = databaseState.position
             }
-            bot.database.updateMusicState(databaseState, player.audioPlayer.playingTrack.position, player.audioPlayer.isPaused, player.audioPlayer.volume, playlistPos)
+            bot.database.updateMusicState(databaseState, player.audioPlayer.playingTrack.position,
+                player.audioPlayer.isPaused, player.audioPlayer.volume, playlistPos)
         }
 
         fun range(range: LongRange) = bot.database.playlistItems(databaseState, range)
-
-        fun queue(track: AudioTrack) {
-            bot.database.addPlaylistItem(databaseState, track.info.uri)
-        }
 
         fun queue(tracks: List<AudioTrack>) {
             bot.database.addPlaylistItems(databaseState, tracks)
@@ -237,13 +256,15 @@ class Audio(val bot: Bot) {
         fun destroy() {
             try {
                 bot.database.clearMusicState(databaseState)
-            } catch (e: Exception) {}
-            channel?.guild?.audioManager?.closeAudioConnection()
-            currentlyPlaying.remove(this)
+            } finally {
+                channel?.guild?.audioManager?.closeAudioConnection()
+                currentlyPlaying.remove(this)
+            }
         }
 
         fun updateDatabase() {
-            bot.database.updateMusicState(databaseState, player.audioPlayer.playingTrack?.position ?: 0, player.audioPlayer.isPaused, volume, playlistPos)
+            bot.database.updateMusicState(databaseState, player.audioPlayer.playingTrack?.position ?: 0,
+                player.audioPlayer.isPaused, volume, playlistPos)
         }
 
         /** O(n), avoid when possible */
@@ -260,8 +281,13 @@ class Audio(val bot: Bot) {
         /** O(n), avoid when possible */
         fun remove(position: Long) {
             bot.database.trnsctn {
-                ExposedDatabase.PlaylistEntry.find { (PlaylistEntries.state eq databaseState.id) and (PlaylistEntries.position eq position) }.firstOrNull()?.delete()
-                for (item in ExposedDatabase.PlaylistEntry.find { (PlaylistEntries.state eq databaseState.id) and (PlaylistEntries.position greater position) }) {
+                ExposedDatabase.PlaylistEntry.find {
+                    (PlaylistEntries.state eq databaseState.id) and (PlaylistEntries.position eq position)
+                }.firstOrNull()?.delete()
+
+                for (item in ExposedDatabase.PlaylistEntry.find {
+                    (PlaylistEntries.state eq databaseState.id) and (PlaylistEntries.position greater position)
+                }) {
                     item.position -= 1
                 }
             }

@@ -1,3 +1,5 @@
+@file:Suppress("WildcardImport", "ReturnCount")
+
 package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.*
@@ -10,6 +12,8 @@ typealias Sender<S, D> = (CommandResult<S, D>) -> Unit
 typealias ErrorConverter<S, D> = (Command<S, D>, CommandException) -> D
 
 typealias Parser<S> = (sender: S, inp: String) -> Triple<List<Argument<*>>, Map<String, Any?>, List<String>>
+
+typealias Validator<S, D> = (sender: S, args: Map<String, Any?>) -> D?
 
 class CommandException(cause: String) : Exception(cause)
 
@@ -26,26 +30,33 @@ class CommandException(cause: String) : Exception(cause)
  * }
  * ```
  *
- * TODO: kill it with fire
+ * TODO kill it with fire
  */
 open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverter<S, D>) {
     val commands = mutableListOf<Command<S, D>>()
 
     data class CommandCategory(val name: String, val subcategories: List<CommandCategory>)
 
-    open class Argument<T : Any>(val type: KClass<T>, val parser: (String) -> T, val checker: (String) -> Boolean, val name: String, val optional: Boolean, val vararg: Boolean) {
+    open class Argument<T : Any>(val type: KClass<T>, val parser: (String) -> T, val checker: (String) -> Boolean,
+                                 val name: String, val optional: Boolean, val vararg: Boolean) {
         override fun toString(): String {
             return "${this::class.java.simpleName}(type=$type, name=$name, optional=$optional, vararg=$vararg)"
         }
     }
 
-    class StringArg(name: String, optional: Boolean = false, vararg: Boolean = false) : Argument<String>(String::class, { it }, { true }, name, optional, vararg)
+    class StringArg(name: String, optional: Boolean = false, vararg: Boolean = false)
+        : Argument<String>(String::class, { it }, { true }, name, optional, vararg)
 
-    class IntArg(name: String, optional: Boolean = false, vararg: Boolean = false) : Argument<Int>(Int::class, String::toInt, { it.matches("-?\\d+".toRegex()) }, name, optional, vararg)
+    class IntArg(name: String, optional: Boolean = false, vararg: Boolean = false)
+        : Argument<Int>(Int::class, String::toInt, { it.matches("-?\\d+".toRegex()) }, name, optional, vararg)
 
-    class LongArg(name: String, optional: Boolean = false, vararg: Boolean = false) : Argument<Long>(Long::class, String::toLong, { it.matches("-?\\d+".toRegex()) }, name, optional, vararg)
+    class LongArg(name: String, optional: Boolean = false, vararg: Boolean = false)
+        : Argument<Long>(Long::class, String::toLong, { it.matches("-?\\d+".toRegex()) }, name, optional, vararg)
 
-    class DoubleArg(name: String, optional: Boolean = false, vararg: Boolean = false) : Argument<Double>(Double::class, String::toDouble, { it.matches("^-?\\d+($|(\\.\\d+))".toRegex()) }, name, optional, vararg)
+    class DoubleArg(name: String, optional: Boolean = false, vararg: Boolean = false)
+        : Argument<Double>(Double::class, String::toDouble, {
+            it.matches("^-?\\d+($|(\\.\\d+))".toRegex())
+        }, name, optional, vararg)
 
     class Command<S, D> private constructor(
         val base: List<String>,
@@ -54,11 +65,12 @@ open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverte
         val runner: Runner<S, D>,
         val overrideSend: Sender<S, D>?,
         val category: CommandCategory?,
-        val validator: ((sender: S, args: Map<String, Any>) -> D?)?,
+        val validator: Validator<S, D>?,
         val parser: Parser<S>?
     ) {
         init {
-            if (arguments.dropLast(1).any { it.vararg }) throw IllegalArgumentException("Only the last argument can be a vararg!  (in command $base)")
+            if (arguments.dropLast(1).any { it.vararg })
+                throw IllegalArgumentException("Only the last argument can be a vararg!  (in command $base)")
         }
 
         fun matches(args: List<String>): Pair<Boolean, List<Argument<*>>> {
@@ -104,10 +116,12 @@ open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverte
             private val overrideSend: Sender<S, D>?
             private val help: String
             private val category: CommandCategory?
-            private val validator: ((sender: S, args: Map<String, Any?>) -> D?)?
+            private val validator: Validator<S, D>?
             private val parser: Parser<S>?
 
-            private constructor(base: List<String>, args: List<Argument<*>>, help: String, runner: Runner<S, D>?, overrideSend: Sender<S, D>?, category: CommandCategory?, validator: ((sender: S, args: Map<String, Any?>) -> D?)?, parser: Parser<S>?) {
+            private constructor(base: List<String>, args: List<Argument<*>>, help: String, runner: Runner<S, D>?,
+                                overrideSend: Sender<S, D>?, category: CommandCategory?, validator: Validator<S, D>?,
+                                parser: Parser<S>?) {
                 this.base = base
                 this.args = args
                 this.runner = runner
@@ -153,7 +167,7 @@ open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverte
                 return CommandBuilder(base, args, help, runner, overrideSend, category, validator, parser)
             }
 
-            fun validator(validator: ((sender: S, args: Map<String, Any?>) -> D?)?): CommandBuilder<S, D> {
+            fun validator(validator: Validator<S, D>?): CommandBuilder<S, D> {
                 return CommandBuilder(base, args, help, runner, overrideSend, category, validator, parser)
             }
 
@@ -185,7 +199,8 @@ open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverte
         val tokens = tokenize(stripped)
         val name = tokens.getOrNull(0) ?: return CommandResult(sender, null, false, null)
         val args = tokens.drop(1)
-        val found = commands.singleOrNull { it.base.contains(name) && it.matches(args).first } ?: return CommandResult(sender, null, false, null)
+        val found = commands.singleOrNull { it.base.contains(name) && it.matches(args).first }
+            ?: return CommandResult(sender, null, false, null)
         val usedArgs = found.matches(args).second
         val map = mutableMapOf<String, Any>()
         val varargAccumulator = mutableListOf<Any?>()
@@ -201,13 +216,13 @@ open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverte
             map[usedArgs.last().name] = varargAccumulator
         }
         found.validator?.invoke(sender, map)?.let { return CommandResult(sender, it, false, found) }
+        @Suppress("TooGenericExceptionCaught", "SwallowedException")
         return try {
             found.runner(sender, map)
                 .run { CommandResult(sender, value, success, found) }
         } catch (e: CommandException) {
             CommandResult(sender, error(found, e), false, found)
         } catch (e: Exception) {
-            e.printStackTrace()
             CommandResult(sender, null, false, found)
         }
     }
@@ -220,6 +235,10 @@ open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverte
         return result
     }
 
+    @Suppress("LoopWithTooManyJumpStatements")
+    /**
+     * TODO kill it with fire
+     */
     fun tokenize(input: String): List<String> {
         if (input.isBlank()) return emptyList()
         if (!input.contains(' ')) return listOf(input)

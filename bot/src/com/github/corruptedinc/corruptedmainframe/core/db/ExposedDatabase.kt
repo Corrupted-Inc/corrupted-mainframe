@@ -1,3 +1,5 @@
+@file:SuppressWarnings("WildcardImport")
+
 package com.github.corruptedinc.corruptedmainframe.core.db
 
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
@@ -31,9 +33,14 @@ class ExposedDatabase(val db: Database) {
         }
     }
 
+    companion object {
+        private const val VARCHAR_MAX_LENGTH = 255  // beginning to hate code analysis
+        private const val MAX_PREFIX_LENGTH = 64
+    }
+
     object GuildMs : LongIdTable(name = "guilds") {
         val discordId = long("discord_id").index(isUnique = true)
-        val prefix = varchar("prefix", 64)
+        val prefix = varchar("prefix", MAX_PREFIX_LENGTH)
     }
 
     class GuildM(id: EntityID<Long>) : LongEntity(id) {
@@ -61,7 +68,7 @@ class ExposedDatabase(val db: Database) {
     object Points : LongIdTable(name = "points") {
         val user   = reference("user", UserMs)
         val guild  = reference("guild", GuildMs)
-        val points = double("points")
+        val pnts = double("points")
         val popups = bool("popups").default(false)
     }
 
@@ -70,11 +77,11 @@ class ExposedDatabase(val db: Database) {
 
         var user   by UserM referencedOn Points.user
         var guild  by GuildM referencedOn Points.guild
-        var points by Points.points
+        var points by Points.pnts
         var popups by Points.popups
     }
 
-    //todo: this isn't needed, remove
+    //todo this isn't needed, remove
     object GuildUsers : Table() {
         val guild = reference("guild", GuildMs)
         val user = reference("user", UserMs)
@@ -112,7 +119,7 @@ class ExposedDatabase(val db: Database) {
 
     object PlaylistEntries : LongIdTable(name = "playlist_entries") {
         val state = reference("state", MusicStates)
-        val audioSource = varchar("audioSource", 255)
+        val audioSource = varchar("audioSource", VARCHAR_MAX_LENGTH)
         val position = long("position")
     }
 
@@ -157,7 +164,7 @@ class ExposedDatabase(val db: Database) {
 
     object AutoRoles : LongIdTable(name = "auto_roles") {
         val message = reference("message", AutoRoleMessages)
-        val emote = varchar("emote", 255)
+        val emote = varchar("emote", VARCHAR_MAX_LENGTH)
         val role = long("role")
     }
 
@@ -185,10 +192,14 @@ class ExposedDatabase(val db: Database) {
         var text      by Reminders.text
     }
 
-    fun user(user: User) = transaction(db) { UserM.find { UserMs.discordId eq user.idLong }.firstOrNull() ?: UserM.new { discordId = user.idLong; botAdmin = false; banned = false } }
+    fun user(user: User) = transaction(db) { UserM.find {
+        UserMs.discordId eq user.idLong
+    }.firstOrNull() ?: UserM.new { discordId = user.idLong; botAdmin = false; banned = false } }
 
     fun guild(guild: Guild): GuildM {
-        return transaction(db) { GuildM.find { GuildMs.discordId eq guild.idLong }.firstOrNull() ?: GuildM.new { discordId = guild.idLong; prefix = "!" } }
+        return transaction(db) { GuildM.find {
+            GuildMs.discordId eq guild.idLong
+        }.firstOrNull() ?: GuildM.new { discordId = guild.idLong; prefix = "!" } }
     }
 
     fun users() = transaction(db) { UserM.all().toList() }
@@ -311,7 +322,9 @@ class ExposedDatabase(val db: Database) {
             }
         }
 
-        val mute = transaction(db) { Mute.new { start = Instant.now().epochSecond; end = endTime.epochSecond; this.user = userm; this.guild = guildm } }
+        val mute = transaction(db) { Mute.new {
+            start = Instant.now().epochSecond; end = endTime.epochSecond; this.user = userm; this.guild = guildm
+        } }
 
         transaction(db) {
             for (role in roles) {
@@ -340,7 +353,7 @@ class ExposedDatabase(val db: Database) {
         return transaction(db) { mute.roles.toList() }
     }
 
-    //todo: transaction?
+    //todo transaction?
     fun roleIds(mute: Mute) = mute.roles.map { it.role }
 
     private fun mutes(user: User, guild: Guild): List<Mute> {
@@ -362,7 +375,9 @@ class ExposedDatabase(val db: Database) {
 
     fun musicState(guild: Guild, channel: VoiceChannel): MusicState? {
         val guildm = guild(guild)
-        return transaction(db) { MusicState.find { (MusicStates.guild eq guildm.id) and (MusicStates.channel eq channel.idLong) }.firstOrNull() }
+        return transaction(db) { MusicState.find {
+            (MusicStates.guild eq guildm.id) and (MusicStates.channel eq channel.idLong)
+        }.firstOrNull() }
     }
 
     fun clearMusicState(state: MusicState) {
@@ -394,7 +409,9 @@ class ExposedDatabase(val db: Database) {
 
     fun playlistItem(state: MusicState, position: Long): String? =
         transaction(db) {
-            PlaylistEntry.find { (PlaylistEntries.state eq state.id) and (PlaylistEntries.position eq position) }.toList().firstOrNull()?.audioSource
+            PlaylistEntry.find {
+                (PlaylistEntries.state eq state.id) and (PlaylistEntries.position eq position)
+            }.toList().firstOrNull()?.audioSource
         }
 
     fun playlistItems(state: MusicState, range: LongRange): List<String> {
@@ -424,6 +441,7 @@ class ExposedDatabase(val db: Database) {
             val state = MusicState.new {
                 position = 0L
                 playlistPos = 0L
+                @SuppressWarnings("MagicNumber")  // again, I am not making a 100% constant
                 volume = 100
                 paused = false
                 this.guild = guild
@@ -467,7 +485,8 @@ class ExposedDatabase(val db: Database) {
 
     fun autoRole(message: Long, emote: MessageReaction.ReactionEmote): Long? {
         return trnsctn {
-            val msg = AutoRoleMessage.find { AutoRoleMessages.message eq message }.firstOrNull()?.id ?: return@trnsctn null
+            val msg = AutoRoleMessage.find { AutoRoleMessages.message eq message }.firstOrNull()?.id
+                ?: return@trnsctn null
             AutoRole.find { (AutoRoles.message eq msg) and (AutoRoles.emote eq emote.name) }.firstOrNull()?.role
         }
     }

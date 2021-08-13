@@ -3,6 +3,7 @@ package com.github.corruptedinc.corruptedmainframe.calculator
 import java.math.BigDecimal
 import java.math.MathContext
 import ch.obermuhlner.math.big.BigDecimalMath
+import java.lang.IllegalStateException
 
 class Calculator(private val context: MathContext) {
     private fun String.bigDec(): BigDecimal? {
@@ -17,6 +18,9 @@ class Calculator(private val context: MathContext) {
     }
     private fun BigDecimal.str(): String = toPlainString().replace("-(\\d+(?:\\.\\d+)?|\\.\\d+)".toRegex(), "%$1")
     private val variables = mutableMapOf<String, BigDecimal>()
+    companion object {
+        private const val MAX_OPS = 100
+    }
 
     init {
         for (constant in Constants.values()) {
@@ -28,7 +32,8 @@ class Calculator(private val context: MathContext) {
     fun evaluate(inp: String): BigDecimal {
         var processed = inp
         for (op in Operation.values()) {
-            processed = processed.replace("\\s+${Regex.escape(op.symbol)}\\s+".toRegex(), " ${op.symbol} ")  // extra spaces/no spaces around operators break it
+            // extra spaces/no spaces around operators break it
+            processed = processed.replace("\\s+${Regex.escape(op.symbol)}\\s+".toRegex(), " ${op.symbol} ")
         }
         if ("^\\w{1,50} = ".toRegex().containsMatchIn(inp)) {
             val varName = inp.substringBefore(" = ")
@@ -51,12 +56,12 @@ class Calculator(private val context: MathContext) {
         var parenCount = 0
         for (c in subbed) {
             if (c == '(') {
-                if (parenCount++ == 0) {
-                    delegated.add("")
-                    continue
-                }
-            }
-            if (c == ')') {
+                parenCount++
+//                if (parenCount++ == 0) {
+//                    delegated.add("")
+//                    continue
+//                }
+            } else if (c == ')') {
                 if (--parenCount == 0) {
                     val evaluated = evaluate(delegated.last(), level + 1, outputVariableName)
                     subbed = subbed.replaceFirst("(" + delegated.last() + ")", evaluated.str())
@@ -73,29 +78,26 @@ class Calculator(private val context: MathContext) {
         subbed = evalOps(subbed, "*/")
         subbed = evalOps(subbed, "+-")
 
-        try {
-            return subbed.bigDec()!!.apply {
-                if (outputVariableName != null) variables[outputVariableName] = this
-            }
-        } catch (e: NullPointerException) {
-            throw IllegalArgumentException("Failed to parse '$subbed'!")
-        }
+        return subbed.bigDec()?.apply {
+            if (outputVariableName != null) variables[outputVariableName] = this
+        } ?: throw IllegalStateException("Failed to evaluate expression!")
     }
 
     private fun evalOps(inp: String, ops: String): String {
         var subbed = inp
-        for (i in 0..100) {
+        @Suppress("UnusedPrivateMember")  // what do you want from me
+        for (i in 0..MAX_OPS) {
             for (op in ops) {
                 subbed = subbed.replace(" $op ", op.toString())
             }
 
             val toEvaluate = ("[\\w.]+" + "[${Regex.escape(ops)}]" + "[\\w.]+").toRegex().findAll(subbed)
+            @Suppress("SpreadOperator")  // -_-
             for (item in toEvaluate) {
                 val first = item.value.split(*ops.toCharArray()).first().bigDec()!!
                 val second = item.value.split(*ops.toCharArray()).last().bigDec()!!
                 val opStr = "[${Regex.escape(ops)}]".toRegex().find(item.value)
-                    ?: throw IllegalArgumentException("Couldn't find operation in '${item.value}'!")
-                val op = Operation.values().find { it.symbol == opStr.value }
+                val op = Operation.values().find { it.symbol == opStr?.value }
                     ?: throw IllegalArgumentException("Couldn't find operation in '${item.value}'!")
                 subbed = subbed.replace(item.value, op.inv(first, second).str())
             }
@@ -104,7 +106,9 @@ class Calculator(private val context: MathContext) {
         throw IllegalArgumentException("Too many args!")
     }
 
-    enum class Operation(val symbol: String, val lambda: (a: BigDecimal, b: BigDecimal, context: MathContext) -> BigDecimal) {
+    enum class Operation(
+        val symbol: String, val lambda: (a: BigDecimal, b: BigDecimal, context: MathContext) -> BigDecimal) {
+
         EXPONENT("^", { a, b, context -> BigDecimalMath.pow(a, b, context) }),
         MULTIPLY("*", { a, b, context -> a.multiply(b, context) }),
         DIVIDE("/", { a, b, context -> a.divide(b, context) }),

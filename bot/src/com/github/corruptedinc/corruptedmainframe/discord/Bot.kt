@@ -38,13 +38,23 @@ class Bot(val config: Config) {
     val log: Logger = Logger.getLogger("bot logger")
     val listeners = MultiListener()
     val startTime: Instant = Instant.now()
-    val jda = JDABuilder.create(config.token, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS, GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES).addEventListeners(listeners).build()
+    val jda = JDABuilder.create(config.token,
+        GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS,
+        GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES).addEventListeners(listeners).build()
     val scope = CoroutineScope(Dispatchers.Default)
-    val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver).apply { useNestedTransactions = true })
+    val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver).apply {
+        useNestedTransactions = true
+    })
     val audio = Audio(this)
     val leveling = Leveling(this)
     val buttonListeners = mutableListOf<(ButtonClickEvent) -> Unit>()
     val plugins = mutableListOf<Plugin>()
+
+    companion object {
+        /** Number of milliseconds between checking for expiring reminders and mutes. */
+        private const val REMINDER_MUTE_RESOLUTION = 1000L
+        private const val PLUGIN_MAIN_CLASS_NAME = "com.plugin.Plugin"
+    }
 
     init {
         Runtime.getRuntime().addShutdownHook(Thread {
@@ -59,6 +69,7 @@ class Bot(val config: Config) {
         val pluginFiles = pluginsDir.listFiles()
         for (plugin in pluginFiles ?: emptyArray()) {
             if (!plugin.name.endsWith(".jar")) continue
+            @Suppress("TooGenericExceptionCaught")  // Anything can happen when loading a plugin
             try {
                 val jar = JarFile(plugin)
                 val e = jar.entries()
@@ -72,11 +83,11 @@ class Bot(val config: Config) {
                         continue
                     }
                     // -6 because of .class
-                    var className: String = je.name.substring(0, je.name.length - 6)
+                    var className: String = je.name.removeSuffix(".class")
                     className = className.replace('/', '.')
                     val c: Class<*> = cl.loadClass(className)
 
-                    if (className == "com.plugin.Plugin") {
+                    if (className == PLUGIN_MAIN_CLASS_NAME) {
                         val loaded = c.constructors.first().newInstance(this) as Plugin
                         plugins.add(loaded)
                         loaded.load()
@@ -93,7 +104,7 @@ class Bot(val config: Config) {
                 log.info("Logged in as ${event.jda.selfUser.asTag}")
                 plugins.forEach { it.botStarted() }
 
-                Timer().schedule(0, 1_000L) {
+                Timer().schedule(0, REMINDER_MUTE_RESOLUTION) {
                     for (mute in database.expiringMutes()) {
                         try {
                             transaction(database.db) {
@@ -101,9 +112,8 @@ class Bot(val config: Config) {
                                 val member = guild.getMemberById(mute.user.discordId)!!
                                 val roles = database.roleIds(mute).map { guild.getRoleById(it) }
                                 guild.modifyMemberRoles(member, roles).queue({}, {})  // ignore errors
-                                database.removeMute(mute)
                             }
-                        } catch (e: NullPointerException) {
+                        } finally {
                             database.removeMute(mute)
                         }
                     }
@@ -113,9 +123,10 @@ class Bot(val config: Config) {
                             try {
                                 // Make copies of relevant things for thread safety
                                 val text = reminder.text
-                                jda.getTextChannelById(reminder.channelId)?.retrieveMessageById(reminder.messageId)?.queue({
-                                    it.replyEmbeds(embed("Reminder", text)).queue({}, {/*ignore errors*/})
-                                }, {/*ignore errors*/})
+                                jda.getTextChannelById(reminder.channelId)?.retrieveMessageById(reminder.messageId)
+                                    ?.queue({
+                                        it.replyEmbeds(embed("Reminder", text)).queue({}, {/*ignore errors*/})
+                                    }, {/*ignore errors*/})
                             } finally {
                                 reminder.delete()
                             }
@@ -128,6 +139,7 @@ class Bot(val config: Config) {
                 database.addLink(event.guild, event.user)
             }
 
+            @Suppress("ReturnCount")  // todo likewise fix maybe?
             override fun onMessageReactionAdd(event: MessageReactionAddEvent) {
                 if (event.user?.let { database.banned(it) } == true) return
                 val roleId = database.autoRole(event.messageIdLong, event.reactionEmote) ?: return
@@ -143,6 +155,7 @@ class Bot(val config: Config) {
                 event.guild.addRoleToMember(event.userId, role).queue()
             }
 
+            @Suppress("ReturnCount")  // todo maybe fix?  not sure how to make this work
             override fun onMessageReactionRemove(event: MessageReactionRemoveEvent) {
                 if (event.user?.let { database.banned(it) } == true) return
                 val roleId = database.autoRole(event.messageIdLong, event.reactionEmote) ?: return

@@ -4,12 +4,16 @@ import java.time.Duration
 import java.util.*
 import kotlin.math.min
 
-fun Duration.toHumanReadable() = toString().removePrefix("PT").replace("(\\d[HMS])(?!$)".toRegex(), "$1 ").lowercase(Locale.getDefault())
+fun Duration.toHumanReadable(): String {
+    return toString().removePrefix("PT")
+        .replace("(\\d[HMS])(?!$)".toRegex(), "$1 ").lowercase(Locale.getDefault())
+}
 
 @JvmName("levenshtein1")
 fun CharSequence.levenshtein(other: CharSequence) = levenshtein(this, other)
 
 // from https://gist.github.com/ademar111190/34d3de41308389a0d0d8
+@SuppressWarnings("ReturnCount")
 fun levenshtein(lhs : CharSequence, rhs : CharSequence) : Int {
     if(lhs == rhs) { return 0 }
     if(lhs.isEmpty()) { return rhs.length }

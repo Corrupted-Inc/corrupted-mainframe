@@ -1,3 +1,5 @@
+@file:Suppress("WildcardImport")
+
 package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.audio.Audio
@@ -5,7 +7,6 @@ import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.*
 import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.Command.CommandBuilder
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
-import com.github.corruptedinc.corruptedmainframe.utils.levenshtein
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer
 import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
@@ -16,24 +17,27 @@ import net.dv8tion.jda.api.audio.hooks.ConnectionListener
 import net.dv8tion.jda.api.audio.hooks.ConnectionStatus
 import net.dv8tion.jda.api.entities.*
 import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
-import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
-import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.interactions.components.Button
-import java.util.*
-import kotlin.concurrent.schedule
 import kotlin.math.floor
 import kotlin.math.roundToLong
 
+private const val SPACES_TO_EMOTE = 4
+private const val BAR_LENGTH = 15
+private const val QUEUE_VIEW_LENGTH = 5
+private const val MAX_VOLUME = 200
+
 fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbed>) {
 
-    fun state(sender: Message) = bot.audio.currentlyPlaying.singleOrNull { it.channel?.guild == sender.guild }  //fixme channels
+    //fixme channels
+    fun state(sender: Message) = bot.audio.currentlyPlaying.singleOrNull { it.channel?.guild == sender.guild }
 
     suspend fun next(message: Message) = state(message)?.next() ?: false
 
     suspend fun previous(message: Message) = state(message)?.previous() ?: false
 
     fun validateInChannel(sender: Member?, state: Audio.AudioState) {
-        if (state.channel?.members?.contains(sender) != true) throw CommandException("You must be in the voice channel to use this command!")
+        if (state.channel?.members?.contains(sender) != true) throw CommandException("You must be in the voice " +
+                "channel to use this command!")
     }
 
     fun validateInChannel(sender: Message, state: Audio.AudioState) {
@@ -48,10 +52,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
             )
         validateInChannel(sender, state)
         val loaded = bot.audio.load(args["source"] as String, !(args["source"] as String).startsWith("http"))
-        if (loaded.isEmpty()) return InternalCommandResult(
-            embed("Couldn't find '${args["source"] as String}'"),
-            false
-        )
+        if (loaded.isEmpty()) throw CommandException("Couldn't find '${args["source"] as String}'")
         state.queue(loaded)
         return InternalCommandResult(
             embed("Successfully added ${loaded.size} items to the queue"),
@@ -61,30 +62,20 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
 
     handler.register(
         CommandBuilder<Message, MessageEmbed>("play", "queue", "p")
-            .args(StringArg("source"), StringArg("channel", optional = true))
-            .help("Plays a song.  Give the URL/name in double quotes, and optionally the voice channel name in double quotes.")
+            .args(StringArg("source"))
+            .help("Plays a song.  Give the URL/name in double quotes.")
             .ran { sender, args ->
-                var channel = if (args["channel"] == null) sender.member?.voiceState?.channel else null
-                if (channel == null) {
-                    val channelName = args["channel"] as String
-                    channel = try {
-                        sender.guild.getVoiceChannelById(channelName.removeSurrounding("<#", ">"))
-                    } catch (e: NumberFormatException) {
-                        null
-                    }
-                        ?: sender.guild.voiceChannels.minByOrNull { it.name.levenshtein(channelName) }
-                                ?: return@ran InternalCommandResult(
-                            embed("Please specify a valid voice channel"),
-                            false
-                        )
-                }
+                val channel = sender.member?.voiceState?.channel
+                    ?: throw CommandException("You must be in a voice channel to use this command!")
 
                 val st = state(sender)
                 if (st != null) {
                     return@ran queue(sender, args)
                 }
-                delay(1000L)
-                val t = bot.audio.load(args["source"] as String, !(args["source"] as String).startsWith("http")).toMutableList()
+                @Suppress("MagicNumber")
+                delay(1000L)  // TODO is this even needed?
+                val t = bot.audio.load(args["source"] as String, !(args["source"] as String).startsWith("http"))
+                    .toMutableList()
                 if (t.isEmpty()) {
                     return@ran InternalCommandResult(embed("Failed to load '${args["source"]}'"), false)
                 }
@@ -112,7 +103,9 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
                         }
                     }
 
+                    @Suppress("EmptyFunctionBlock")
                     override fun onPing(ping: Long) {}
+                    @Suppress("EmptyFunctionBlock")
                     override fun onUserSpeaking(user: User, speaking: Boolean) {}
                 }
 
@@ -160,7 +153,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
 
     handler.register(
         CommandBuilder<Message, MessageEmbed>("volume", "vol").arg(IntArg("volume"))
-            .help("Sets the volume of the current song.  Must be an integer between 0 and 200.")
+            .help("Sets the volume of the current song.  Must be an integer between 0 and $MAX_VOLUME.")
             .ran { sender, args ->
             val state = bot.audio.currentlyPlaying.singleOrNull { it.channel?.guild == sender.guild }
                 ?: return@ran InternalCommandResult(
@@ -169,7 +162,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
                 )
                 validateInChannel(sender, state)
 
-                val vol = (args["volume"] as Int).coerceIn(0, 200)
+                val vol = (args["volume"] as Int).coerceIn(0, MAX_VOLUME)
 
             state.volume = vol
             return@ran InternalCommandResult(embed("Set volume to $vol%"), true)
@@ -254,7 +247,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
                 return@ran InternalCommandResult(
                 embed(
                     "Queue",
-                    content = state.range(state.playlistPos..(state.playlistPos + 5))
+                    content = state.range(state.playlistPos..(state.playlistPos + QUEUE_VIEW_LENGTH))
                         .mapIndexedNotNull { i, it ->
                             val loaded = bot.audio.load(it).firstOrNull() ?: return@mapIndexedNotNull null
                             MessageEmbed.Field("#$i: ${loaded.info.title}", loaded.info.author, false)
@@ -266,31 +259,33 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("dequeue", "remove", "delete").arg(LongArg("index")).ran { sender, args ->
-            val state = state(sender) ?: return@ran InternalCommandResult(
-                    embed("Nothing playing"),
+        CommandBuilder<Message, MessageEmbed>("dequeue", "remove", "delete").arg(LongArg("index"))
+            .ran { sender, args ->
+                val state = state(sender) ?: return@ran InternalCommandResult(
+                        embed("Nothing playing"),
+                        false
+                    )
+
+                validateInChannel(sender, state)
+
+                val idx = args["index"] as Long + state.playlistPos
+                if (idx !in 0 until (state.playlistCount - state.playlistPos)) return@ran InternalCommandResult(
+                    embed("$idx is not a valid index"),
                     false
                 )
 
-            validateInChannel(sender, state)
+                val found = state[idx]
+                    ?: throw CommandException("this should never happen, which is why I'm showing it to the user")
 
-            val idx = args["index"] as Long + state.playlistPos
-            if (idx !in 0 until (state.playlistCount - state.playlistPos)) return@ran InternalCommandResult(
-                embed("$idx is not a valid index"),
-                false
-            )
+                val info = bot.audio.load(found).firstOrNull()  // it's got caching, it's fine.... right??
 
-            val found = state[idx] ?: throw CommandException("this should never happen, which is why I'm showing it to the user")
+                state.remove(idx)
 
-            val info = bot.audio.load(found).firstOrNull()  // it's got caching, it's fine.... right??
-
-            state.remove(idx)
-
-            return@ran InternalCommandResult(
-                embed("Successfully removed '${info?.info?.title}' from the playlist."),
-                true
-            )
-        }
+                return@ran InternalCommandResult(
+                    embed("Successfully removed '${info?.info?.title}' from the playlist."),
+                    true
+                )
+            }
     )
 
     handler.register(
@@ -302,6 +297,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
                 )
                 validateInChannel(sender, state)
 
+                @Suppress("MagicNumber")  // no, I am not defining a constant for seconds to milliseconds
                 state.progress = state.progress?.plus(((args["seconds"] as Double) * 1000).roundToLong())
 
                 return@ran InternalCommandResult(
@@ -319,14 +315,17 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
                         embed("Nothing playing"),
                         false
                     )
-                val length = 15
+                val length = BAR_LENGTH
                 val timeFraction = (state.progress ?: 0) / (state.currentlyPlayingTrack?.duration?.toDouble() ?: 1.0)
                 val dashCount = floor(timeFraction * length).toInt()
-                val spaceCount = 4 * (length - dashCount)
+                val spaceCount = SPACES_TO_EMOTE * (length - dashCount)
                 val embed = embed(
                     "'${state.currentlyPlayingTrack?.info?.title}' by ${state.currentlyPlayingTrack?.info?.author}",
                     description = "|${":heavy_minus_sign:".repeat(dashCount)}:radio_button:${"-".repeat(spaceCount)}|",
-                    imgUrl = if (state.currentlyPlayingTrack?.info?.uri?.startsWith("https://youtube.com/watch?v=") == true) "https://img.youtube.com/vi/${state.currentlyPlayingTrack?.info?.uri?.substringAfterLast("?v=")}/maxresdefault.jpg" else null
+                    imgUrl = if (state.currentlyPlayingTrack?.info?.uri
+                            ?.startsWith("https://youtube.com/watch?v=") == true)
+                                "https://img.youtube.com/vi/${state.currentlyPlayingTrack?.info?.uri?.
+                                substringAfterLast("?v=")}/maxresdefault.jpg" else null
                 )
 
                 fun buttons(disabled: Boolean = false) = arrayOf(
@@ -336,6 +335,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
                     Button.primary("next",  Emoji.fromUnicode("⏭")).withDisabled(disabled),
                 )
 
+                @Suppress("SpreadOperator")
                 val message = sender.channel.sendMessageEmbeds(embed).setActionRow(*buttons(false)).complete()
 
                 val listener = listener@ { event: ButtonClickEvent ->
@@ -355,7 +355,8 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
                 bot.buttonListeners.add(listener)
 
                 bot.scope.launch {
-                    delay(240_000)
+                    delay(Commands.BUTTON_TIMEOUT)
+                    @Suppress("SpreadOperator")
                     message.editMessageEmbeds(embed).setActionRow(*buttons(true)).complete()
                     bot.buttonListeners.remove(listener)
                 }

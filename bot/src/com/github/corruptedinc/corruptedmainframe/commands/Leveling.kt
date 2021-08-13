@@ -13,16 +13,21 @@ import kotlin.math.sqrt
 class Leveling(private val bot: Bot) {
     companion object {
         const val POINTS_PER_MESSAGE = 5.0
+        const val LEVEL_ONE_POINTS = 50
+        const val DIVISOR = 3
     }
 
-    fun pointsToLevel(points: Double) = (sqrt(points + 50) - sqrt(50.0)) / 3
+    fun pointsToLevel(points: Double) = (sqrt(points + LEVEL_ONE_POINTS) - sqrt(LEVEL_ONE_POINTS.toDouble())) / DIVISOR
 
-    fun levelToPoints(level: Double) = ((level * 3) + sqrt(50.0)).sq() - 50
+    fun levelToPoints(level: Double) = ((level * DIVISOR) + sqrt(LEVEL_ONE_POINTS.toDouble())).sq() - LEVEL_ONE_POINTS
 
     fun level(user: User, guild: Guild) = pointsToLevel(bot.database.points(user, guild))
 
     suspend fun addPoints(user: User, points: Double, channel: TextChannel) {
         if (user.isBot) return
+
+        // I'm aware this is bad, but this is run in a spot where there isn't any catching
+        @Suppress("SwallowedException", "TooGenericExceptionCaught")
         try {
             val previousLevel = level(user, channel.guild).toInt()
             bot.database.addPoints(user, channel.guild, points)
@@ -37,6 +42,6 @@ class Leveling(private val bot: Bot) {
                     )
                 ).complete()
             }
-        } catch (e: Exception) {}
+        } catch (ignored: Exception) {}
     }
 }
