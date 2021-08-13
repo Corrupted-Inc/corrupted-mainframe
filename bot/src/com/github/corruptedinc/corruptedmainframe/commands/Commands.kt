@@ -174,7 +174,7 @@ class Commands(val bot: Bot) {
                     description = "[Admin invite](${adminInvite(bot.jda.selfUser.id)})\n" +
                             "[Basic permissions](${basicInvite(bot.jda.selfUser.id)})"
                 ), true)
-            }
+            }.help("Sends invite links for the bot.")
         )
 
         handler.register(
@@ -228,6 +228,7 @@ class Commands(val bot: Bot) {
 
         handler.register(
             CommandBuilder<Message, MessageEmbed>("purge").arg(IntArg("count"))
+                .help("Removes a number of messages.")
                 .validator(adminValidator)
                 .ran { sender, args ->
                     val count = (args["count"] as? Int ?: throw CommandException("Invalid number"))
