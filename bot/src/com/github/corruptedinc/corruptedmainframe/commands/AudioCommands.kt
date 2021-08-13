@@ -259,6 +259,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
 
     handler.register(
         CommandBuilder<Message, MessageEmbed>("dequeue", "remove", "delete").arg(LongArg("index"))
+            .help("Removes queued items from the playlist.")
             .ran { sender, args ->
                 val state = state(sender) ?: return@ran InternalCommandResult(
                         embed("Nothing playing"),
