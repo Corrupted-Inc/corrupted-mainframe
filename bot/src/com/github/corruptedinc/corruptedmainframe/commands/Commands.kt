@@ -1,5 +1,3 @@
-@file:Suppress("WildcardImport")
-
 package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.calculator.Calculator
@@ -39,6 +37,7 @@ class Commands(val bot: Bot) {
     companion object {
         private fun String.stripPings() = this.replace("@", "\\@")
 
+        @Suppress("LongParameterList")  // They've got default arguments
         fun embed(
             title: String,
             url: String? = null,
@@ -214,7 +213,7 @@ class Commands(val bot: Bot) {
                     )
                         ?.complete() ?: return@ran InternalCommandResult(embed("Invalid message link"), false)
 
-                    bot.database.addAutoRole(msg, reactionsMap)
+                    bot.database.moderationDB.addAutoRole(msg, reactionsMap)
 
                     for (reaction in reactionsMap) {
                         msg.addReaction(reaction.key).complete()
@@ -490,7 +489,7 @@ class Commands(val bot: Bot) {
                         ?: return@ran InternalCommandResult(embed("Must be a member of this server"), false)
 
                     val end = Instant.now().plusSeconds(time)
-                    bot.database.addMute(user, member.roles, end, sender.guild)
+                    bot.database.moderationDB.addMute(user, member.roles, end, sender.guild)
 
                     member.guild.modifyMemberRoles(member, listOf()).complete()
 
@@ -510,12 +509,12 @@ class Commands(val bot: Bot) {
 
                     val user = args["user"] as User
 
-                    val mute = bot.database.findMute(user, sender.guild)
+                    val mute = bot.database.moderationDB.findMute(user, sender.guild)
                         ?: return@ran InternalCommandResult(embed("${user.asMention} isn't muted!"), false)
 
                     sender.guild.modifyMemberRoles(
                         sender.guild.getMember(user)!!,
-                        bot.database.roleIds(mute).map { sender.guild.getRoleById(it) }).complete()
+                        bot.database.moderationDB.roleIds(mute).map { sender.guild.getRoleById(it) }).complete()
 
                     return@ran InternalCommandResult(embed("Unmuted ${user.asTag}"), true)
             }

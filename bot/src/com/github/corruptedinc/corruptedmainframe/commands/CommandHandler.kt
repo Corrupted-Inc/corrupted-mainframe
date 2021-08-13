@@ -1,4 +1,4 @@
-@file:Suppress("WildcardImport", "ReturnCount")
+@file:Suppress("ReturnCount", "LongParameterList", "ComplexMethod", "NestedBlockDepth", "LongMethod")
 
 package com.github.corruptedinc.corruptedmainframe.commands
 

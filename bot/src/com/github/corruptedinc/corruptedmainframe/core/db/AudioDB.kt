@@ -1,0 +1,157 @@
+package com.github.corruptedinc.corruptedmainframe.core.db
+
+import com.sedmelluq.discord.lavaplayer.track.AudioTrack
+import net.dv8tion.jda.api.entities.Guild
+import net.dv8tion.jda.api.entities.VoiceChannel
+import org.jetbrains.exposed.dao.LongEntity
+import org.jetbrains.exposed.dao.LongEntityClass
+import org.jetbrains.exposed.dao.id.EntityID
+import org.jetbrains.exposed.dao.id.LongIdTable
+import org.jetbrains.exposed.sql.and
+
+class AudioDB(val database: ExposedDatabase) {
+    fun tables() = arrayOf(PlaylistEntries, MusicStates)
+
+    object PlaylistEntries : LongIdTable(name = "playlist_entries") {
+        val state = reference("state", MusicStates)
+        val audioSource = varchar("audioSource", ExposedDatabase.VARCHAR_MAX_LENGTH)
+        val position = long("position")
+    }
+
+    class PlaylistEntry(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<PlaylistEntry>(PlaylistEntries)
+        var state       by MusicState referencedOn PlaylistEntries.state
+        var audioSource by PlaylistEntries.audioSource
+        var position    by PlaylistEntries.position
+    }
+
+    object MusicStates : LongIdTable(name = "music_states") {
+        val guild = reference("guild", ExposedDatabase.GuildMs)
+        val channel = long("channel")
+        val paused = bool("paused")
+        val volume = integer("volume")
+        val position = long("position")
+        val playlistPos = long("playlistPos")
+    }
+
+    class MusicState(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<MusicState>(MusicStates)
+        var guild       by ExposedDatabase.GuildM referencedOn MusicStates.guild
+        var channel     by MusicStates.channel
+        var paused      by MusicStates.paused
+        var volume      by MusicStates.volume
+        var position    by MusicStates.position
+        var playlistPos by MusicStates.playlistPos
+        val items       by PlaylistEntry referrersOn PlaylistEntries.state
+    }
+
+    fun musicStates() = database.trnsctn { MusicState.all().toList() }
+
+    fun musicStates(guild: Guild): List<AudioDB.MusicState> {
+        val guildm = database.guild(guild)
+        return database.trnsctn { MusicState.find { MusicStates.guild eq guildm.id }.toList() }
+    }
+
+    fun musicState(guild: Guild, channel: VoiceChannel): AudioDB.MusicState? {
+        val guildm = database.guild(guild)
+        return database.trnsctn { MusicState.find {
+            (MusicStates.guild eq guildm.id) and (MusicStates.channel eq channel.idLong)
+        }.firstOrNull() }
+    }
+
+    fun clearMusicState(state: AudioDB.MusicState) {
+        database.trnsctn {
+            for (item in state.items) {
+                item.delete()
+            }
+            state.delete()
+        }
+    }
+
+    fun updateMusicState(state: AudioDB.MusicState, position: Long, paused: Boolean, volume: Int, playlistPos: Long) {
+        database.trnsctn {
+            state.position = position
+            state.paused = paused
+            state.volume = volume
+            state.playlistPos = playlistPos
+        }
+    }
+
+    fun updateMusicState(state: AudioDB.MusicState, paused: Boolean, volume: Int, position: Long, playlistPos: Long) {
+        database.trnsctn {
+            state.position = position
+            state.paused = paused
+            state.volume = volume
+            state.playlistPos = playlistPos
+        }
+    }
+
+    fun playlistItem(state: AudioDB.MusicState, position: Long): String? =
+        database.trnsctn {
+            PlaylistEntry.find {
+                (PlaylistEntries.state eq state.id) and (PlaylistEntries.position eq position)
+            }.toList().firstOrNull()?.audioSource
+        }
+
+    fun playlistItems(state: AudioDB.MusicState, range: LongRange): List<String> {
+        return database.trnsctn {
+            PlaylistEntry.find {
+                (PlaylistEntries.state eq state.id) and
+                        (PlaylistEntries.position greaterEq range.first) and
+                        (PlaylistEntries.position lessEq range.last) }.toList().map { it.audioSource }
+        }
+    }
+
+    fun addPlaylistItem(state: AudioDB.MusicState, track: String): Long {
+        return database.trnsctn {
+            val pos = state.items.maxOf { it.position } + 1
+            PlaylistEntry.new {
+                this.state = state
+                this.position = pos
+                this.audioSource = track
+            }
+            pos
+        }
+    }
+
+    fun createMusicState(channel: VoiceChannel, tracks: List<String>): AudioDB.MusicState {
+        val guild = database.guild(channel.guild)
+        return database.trnsctn {
+            val state = MusicState.new {
+                position = 0L
+                playlistPos = 0L
+                @SuppressWarnings("MagicNumber")  // again, I am not making a 100% constant
+                volume = 100
+                paused = false
+                this.guild = guild
+                this.channel = channel.idLong
+            }
+
+            for ((index, track) in tracks.withIndex()) {
+                PlaylistEntry.new {
+                    this.state = state
+                    audioSource = track
+                    position = index.toLong()
+                }
+            }
+            return@trnsctn state
+        }
+    }
+
+    fun addPlaylistItems(state: AudioDB.MusicState, tracks: List<AudioTrack>) {
+        database.trnsctn {
+            var pos = state.items.maxOf { it.position } + 1
+            for (t in tracks) {
+                PlaylistEntry.new {
+                    this.state = state
+                    this.position = pos++
+                    this.audioSource = t.info.uri
+                }
+            }
+        }
+    }
+
+    fun playlistEntryCount(state: AudioDB.MusicState): Long {
+        return database.trnsctn { state.items.count() }
+    }
+}

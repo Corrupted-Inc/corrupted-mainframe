@@ -1,5 +1,3 @@
-@file:Suppress("WildcardImport")
-
 package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.audio.Audio
@@ -26,6 +24,7 @@ private const val BAR_LENGTH = 15
 private const val QUEUE_VIEW_LENGTH = 5
 private const val MAX_VOLUME = 200
 
+@Suppress("LongMethod", "ComplexMethod")  // why yes, it is a long method
 fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbed>) {
 
     //fixme channels

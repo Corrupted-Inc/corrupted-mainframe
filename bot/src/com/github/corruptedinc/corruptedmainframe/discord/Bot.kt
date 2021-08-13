@@ -105,16 +105,16 @@ class Bot(val config: Config) {
                 plugins.forEach { it.botStarted() }
 
                 Timer().schedule(0, REMINDER_MUTE_RESOLUTION) {
-                    for (mute in database.expiringMutes()) {
+                    for (mute in database.moderationDB.expiringMutes()) {
                         try {
                             transaction(database.db) {
                                 val guild = jda.getGuildById(mute.guild.discordId)!!
                                 val member = guild.getMemberById(mute.user.discordId)!!
-                                val roles = database.roleIds(mute).map { guild.getRoleById(it) }
+                                val roles = database.moderationDB.roleIds(mute).map { guild.getRoleById(it) }
                                 guild.modifyMemberRoles(member, roles).queue({}, {})  // ignore errors
                             }
                         } finally {
-                            database.removeMute(mute)
+                            database.moderationDB.removeMute(mute)
                         }
                     }
 
@@ -142,11 +142,11 @@ class Bot(val config: Config) {
             @Suppress("ReturnCount")  // todo likewise fix maybe?
             override fun onMessageReactionAdd(event: MessageReactionAddEvent) {
                 if (event.user?.let { database.banned(it) } == true) return
-                val roleId = database.autoRole(event.messageIdLong, event.reactionEmote) ?: return
+                val roleId = database.moderationDB.autoRole(event.messageIdLong, event.reactionEmote) ?: return
                 val role = event.guild.getRoleById(roleId) ?: return
 
                 // If they're muted they aren't eligible for reaction roles
-                val end = event.user?.let { database.findMute(it, event.guild)?.end }
+                val end = event.user?.let { database.moderationDB.findMute(it, event.guild)?.end }
                 if (end?.let { Instant.ofEpochSecond(it).isAfter(Instant.now()) } == true) {
                     event.reaction.removeReaction(event.user!!).queue()
                     return
@@ -158,7 +158,7 @@ class Bot(val config: Config) {
             @Suppress("ReturnCount")  // todo maybe fix?  not sure how to make this work
             override fun onMessageReactionRemove(event: MessageReactionRemoveEvent) {
                 if (event.user?.let { database.banned(it) } == true) return
-                val roleId = database.autoRole(event.messageIdLong, event.reactionEmote) ?: return
+                val roleId = database.moderationDB.autoRole(event.messageIdLong, event.reactionEmote) ?: return
                 val role = event.guild.getRoleById(roleId) ?: return
                 event.guild.removeRoleFromMember(event.userId, role).queue()
             }

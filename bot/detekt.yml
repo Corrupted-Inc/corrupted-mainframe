@@ -1,0 +1,6 @@
+complexity:
+  TooManyFunctions:
+    thresholdInClasses: 20
+style:
+  WildcardImport:
+    active: false

@@ -31,8 +31,8 @@ detekt {
     buildUponDefaultConfig = true // preconfigure defaults
     allRules = false // activate all available (even unstable) rules.
     source = project.files("src/")
-//    config = files("$projectDir/config/detekt.yml") // point to your custom config defining rules to run, overwriting default behavior
-//    baseline = file("$projectDir/config/baseline.xml") // a way of suppressing issues before introducing detekt
+    config = files("detekt.yml") // point to your custom config defining rules to run, overwriting default behavior
+//    baseline = file("detekt.xml") // a way of suppressing issues before introducing detekt
 
     reports {
         html.enabled = true // observe findings in your browser with structure and code snippets
@@ -45,6 +45,7 @@ detekt {
 tasks.jar {
     archiveBaseName.set("corrupted-mainframe")
     from(configurations.runtimeClasspath.get().filter { !it.path.endsWith(".pom") }.map { if (it.isDirectory) it else zipTree(it) })
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
 
     manifest {
         attributes["Main-Class"] = "com.github.corruptedinc.corruptedmainframe.MainKt"
@@ -60,12 +61,14 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 tasks {
     val sourcesJar by creating(Jar::class) {
         archiveClassifier.set("sources")
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
         from(sourceSets.main.get().allSource, configurations.runtimeClasspath.get().filter { !it.path.endsWith(".pom") }.map { if (it.isDirectory) it else zipTree(it) }, sourceSets.main.get().output)
     }
 
     val javadocJar by creating(Jar::class) {
         dependsOn.add(javadoc)
         archiveClassifier.set("javadoc")
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
         from(javadoc)
     }
 

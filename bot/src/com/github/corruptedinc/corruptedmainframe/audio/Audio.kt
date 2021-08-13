@@ -1,7 +1,7 @@
 package com.github.corruptedinc.corruptedmainframe.audio
 
-import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
-import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.PlaylistEntries
+import com.github.corruptedinc.corruptedmainframe.core.db.AudioDB
+import com.github.corruptedinc.corruptedmainframe.core.db.AudioDB.PlaylistEntries
 import com.google.common.cache.Cache
 import com.google.common.cache.CacheBuilder
 import com.google.common.cache.CacheLoader
@@ -46,7 +46,7 @@ class Audio(val bot: Bot) {
     init {
         bot.listeners.add(object : ListenerAdapter() {
             override fun onReady(event: ReadyEvent) {
-                for (item in bot.database.musicStates()) {
+                for (item in bot.database.audioDB.musicStates()) {
                     // Because sharding, only restart playing for guilds that it's actually connected to
                     if (bot.jda.guilds.any { it.idLong == bot.database.trnsctn { item.guild.discordId } }) {
                         currentlyPlaying.add(AudioState(item))
@@ -130,21 +130,21 @@ class Audio(val bot: Bot) {
         val channel get() = bot.jda.getVoiceChannelById(channelId)
         private val player: AudioPlayerSendHandler
         var playlistPos: Long
-        val playlistCount get() = bot.database.playlistEntryCount(databaseState)
+        val playlistCount get() = bot.database.audioDB.playlistEntryCount(databaseState)
         var channelId: Long
             set(value) { bot.database.trnsctn { databaseState.channel = value }; field = value }
 
         constructor(channel: VoiceChannel, player: AudioPlayerSendHandler,
                     playlist: MutableList<AudioTrack>, position: Long) {
             playlistCache = playlist.map { it.info.uri }
-            this.databaseState = bot.database.createMusicState(channel, playlistCache)
+            this.databaseState = bot.database.audioDB.createMusicState(channel, playlistCache)
             channelId = channel.idLong
             this.player = player
             this.playlistPos = position
             currentlyPlaying.add(this)
         }
 
-        constructor(databaseState: ExposedDatabase.MusicState) {
+        constructor(databaseState: AudioDB.MusicState) {
             channelId = transaction(bot.database.db) { databaseState.channel }
             player = AudioPlayerSendHandler(playerManager.createPlayer())
 
@@ -185,7 +185,7 @@ class Audio(val bot: Bot) {
         }
 
         private val playlistCache: List<String>
-        private val databaseState: ExposedDatabase.MusicState
+        private val databaseState: AudioDB.MusicState
 
         var paused
             get() = player.audioPlayer.isPaused
@@ -207,7 +207,7 @@ class Audio(val bot: Bot) {
             } }
 
             if (canProceed) {
-                bot.database.updateMusicState(databaseState, 0L,
+                bot.database.audioDB.updateMusicState(databaseState, 0L,
                     player.audioPlayer.isPaused, player.audioPlayer.volume, playlistPos)
                 playCurrent()
             } else {
@@ -223,7 +223,7 @@ class Audio(val bot: Bot) {
             } }
 
             if (canProceed) {
-                bot.database.updateMusicState(databaseState, 0L, player.audioPlayer.isPaused,
+                bot.database.audioDB.updateMusicState(databaseState, 0L, player.audioPlayer.isPaused,
                     player.audioPlayer.volume, playlistPos)
                 playCurrent()
             } else {
@@ -234,7 +234,7 @@ class Audio(val bot: Bot) {
         }
 
         fun current(): String? {
-            return bot.database.playlistItem(databaseState, playlistPos)
+            return bot.database.audioDB.playlistItem(databaseState, playlistPos)
         }
 
         suspend fun playCurrent() {
@@ -243,19 +243,19 @@ class Audio(val bot: Bot) {
             if (databaseState.playlistPos == playlistPos) {
                 player.audioPlayer.playingTrack.position = databaseState.position
             }
-            bot.database.updateMusicState(databaseState, player.audioPlayer.playingTrack.position,
+            bot.database.audioDB.updateMusicState(databaseState, player.audioPlayer.playingTrack.position,
                 player.audioPlayer.isPaused, player.audioPlayer.volume, playlistPos)
         }
 
-        fun range(range: LongRange) = bot.database.playlistItems(databaseState, range)
+        fun range(range: LongRange) = bot.database.audioDB.playlistItems(databaseState, range)
 
         fun queue(tracks: List<AudioTrack>) {
-            bot.database.addPlaylistItems(databaseState, tracks)
+            bot.database.audioDB.addPlaylistItems(databaseState, tracks)
         }
 
         fun destroy() {
             try {
-                bot.database.clearMusicState(databaseState)
+                bot.database.audioDB.clearMusicState(databaseState)
             } finally {
                 channel?.guild?.audioManager?.closeAudioConnection()
                 currentlyPlaying.remove(this)
@@ -263,7 +263,7 @@ class Audio(val bot: Bot) {
         }
 
         fun updateDatabase() {
-            bot.database.updateMusicState(databaseState, player.audioPlayer.playingTrack?.position ?: 0,
+            bot.database.audioDB.updateMusicState(databaseState, player.audioPlayer.playingTrack?.position ?: 0,
                 player.audioPlayer.isPaused, volume, playlistPos)
         }
 
@@ -281,11 +281,11 @@ class Audio(val bot: Bot) {
         /** O(n), avoid when possible */
         fun remove(position: Long) {
             bot.database.trnsctn {
-                ExposedDatabase.PlaylistEntry.find {
+                AudioDB.PlaylistEntry.find {
                     (PlaylistEntries.state eq databaseState.id) and (PlaylistEntries.position eq position)
                 }.firstOrNull()?.delete()
 
-                for (item in ExposedDatabase.PlaylistEntry.find {
+                for (item in AudioDB.PlaylistEntry.find {
                     (PlaylistEntries.state eq databaseState.id) and (PlaylistEntries.position greater position)
                 }) {
                     item.position -= 1
@@ -293,7 +293,7 @@ class Audio(val bot: Bot) {
             }
         }
 
-        operator fun get(position: Long) = bot.database.playlistItem(databaseState, position)
+        operator fun get(position: Long) = bot.database.audioDB.playlistItem(databaseState, position)
     }
 
     init {
