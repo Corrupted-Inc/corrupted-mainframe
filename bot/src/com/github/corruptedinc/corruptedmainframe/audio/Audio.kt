@@ -1,6 +1,8 @@
 package com.github.corruptedinc.corruptedmainframe.audio
 
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.PlaylistEntries
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.PlaylistEntry.Companion
 import com.google.common.cache.Cache
 import com.google.common.cache.CacheBuilder
 import com.google.common.cache.CacheLoader
@@ -27,6 +29,7 @@ import net.dv8tion.jda.api.entities.VoiceChannel
 import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.voice.GuildVoiceMoveEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
@@ -242,6 +245,29 @@ class Audio(val bot: Bot) {
         fun updateDatabase() {
             bot.database.updateMusicState(databaseState, player.audioPlayer.playingTrack?.position ?: 0, player.audioPlayer.isPaused, volume, playlistPos)
         }
+
+        /** O(n), avoid when possible */
+        fun shuffle() {
+            bot.database.trnsctn {
+                val shuffled = (0 until playlistCount).shuffled()
+                for ((item, pos) in databaseState.items.zip(shuffled)) {
+                    if (item.position == playlistPos) continue
+                    item.position = pos
+                }
+            }
+        }
+
+        /** O(n), avoid when possible */
+        fun remove(position: Long) {
+            bot.database.trnsctn {
+                ExposedDatabase.PlaylistEntry.find { (PlaylistEntries.state eq databaseState.id) and (PlaylistEntries.position eq position) }.firstOrNull()?.delete()
+                for (item in ExposedDatabase.PlaylistEntry.find { (PlaylistEntries.state eq databaseState.id) and (PlaylistEntries.position greater position) }) {
+                    item.position -= 1
+                }
+            }
+        }
+
+        operator fun get(position: Long) = bot.database.playlistItem(databaseState, position)
     }
 
     init {

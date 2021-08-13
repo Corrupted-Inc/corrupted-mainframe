@@ -7,9 +7,10 @@ import org.jetbrains.exposed.dao.LongEntityClass
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.SchemaUtils.withDataBaseLock
+import org.jetbrains.exposed.sql.`java-time`.datetime
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.Instant
+import java.time.LocalDateTime
 
 class ExposedDatabase(val db: Database) {
     init {
@@ -24,7 +25,8 @@ class ExposedDatabase(val db: Database) {
                 PlaylistEntries,
                 AutoRoleMessages,
                 AutoRoles,
-                Points
+                Points,
+                Reminders
             )
         }
     }
@@ -53,6 +55,7 @@ class ExposedDatabase(val db: Database) {
         var botAdmin  by UserMs.botAdmin
         var banned    by UserMs.banned
         var guilds    by GuildM via GuildUsers
+        val reminders by Reminder referrersOn Reminders.user
     }
 
     object Points : LongIdTable(name = "points") {
@@ -165,10 +168,27 @@ class ExposedDatabase(val db: Database) {
         var role    by AutoRoles.role
     }
 
+    object Reminders : LongIdTable(name = "reminders") {
+        val messageId = long("messageid")
+        val user = reference("user", UserMs)
+        val channelId = long("channelid")
+        val time = datetime("time")
+        val text = text("text")
+    }
+
+    class Reminder(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<Reminder>(Reminders)
+        var messageId by Reminders.messageId
+        var user      by UserM referencedOn Reminders.user
+        var channelId by Reminders.channelId
+        var time      by Reminders.time
+        var text      by Reminders.text
+    }
+
     fun user(user: User) = transaction(db) { UserM.find { UserMs.discordId eq user.idLong }.firstOrNull() ?: UserM.new { discordId = user.idLong; botAdmin = false; banned = false } }
 
     fun guild(guild: Guild): GuildM {
-        return transaction(db) { GuildM.find { GuildMs.discordId eq guild.idLong }.firstOrNull() ?: GuildM.new { discordId = guild.idLong; prefix = "!"; leveling = true } }
+        return transaction(db) { GuildM.find { GuildMs.discordId eq guild.idLong }.firstOrNull() ?: GuildM.new { discordId = guild.idLong; prefix = "!" } }
     }
 
     fun users() = transaction(db) { UserM.all().toList() }
@@ -257,7 +277,7 @@ class ExposedDatabase(val db: Database) {
     }
 
     fun addGuild(guild: Guild, users: List<User>): GuildM {
-        val guildm = transaction(db) { GuildM.new { prefix = "!"; discordId = guild.idLong; leveling = true } }
+        val guildm = transaction(db) { GuildM.new { prefix = "!"; discordId = guild.idLong } }
         val userms = mutableListOf<UserM>()
         for (user in users) {
             userms.add(user(user))
@@ -485,6 +505,13 @@ class ExposedDatabase(val db: Database) {
     }
 
     fun banned(user: User) = user(user).banned
+
+    fun reminders(user: User) = trnsctn { user(user).reminders.toList() }
+
+    fun expiringRemindersNoTransaction(): List<Reminder> {
+        val now = LocalDateTime.now()
+        return Reminder.find { Reminders.time lessEq now }.toList()
+    }
 
     fun <T> trnsctn(block: Transaction.() -> T): T = transaction(db, block)
 }

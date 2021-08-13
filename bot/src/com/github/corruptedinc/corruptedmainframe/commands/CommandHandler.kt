@@ -25,6 +25,8 @@ class CommandException(cause: String) : Exception(cause)
  *     handler.handleAndSend("!", "!help 2", "username")
  * }
  * ```
+ *
+ * TODO: kill it with fire
  */
 open class CommandHandler<S, D>(val send: Sender<S, D>, val error: ErrorConverter<S, D>) {
     val commands = mutableListOf<Command<S, D>>()

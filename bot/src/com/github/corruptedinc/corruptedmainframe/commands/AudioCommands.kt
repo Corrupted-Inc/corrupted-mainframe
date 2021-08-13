@@ -177,7 +177,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("stop")
+        CommandBuilder<Message, MessageEmbed>("stop", "stoop", "stahp", "sotp", "stfu")
             .help("Stops playing the current song and deletes the playlist.")
             .ran { sender, _ ->
                 val state = state(sender) ?: return@ran InternalCommandResult(
@@ -228,6 +228,20 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
+        CommandBuilder<Message, MessageEmbed>("shuffle")
+            .help("Shuffles the playlist.")
+            .ran { sender, _ ->
+                val state = state(sender) ?: return@ran InternalCommandResult(
+                    embed("Nothing playing"),
+                    false
+                )
+                validateInChannel(sender, state)
+                state.shuffle()
+                return@ran InternalCommandResult(embed("Shuffled"), true)
+        }
+    )
+
+    handler.register(
         CommandBuilder<Message, MessageEmbed>("queue", "q")
             .help("Shows the queue.")
             .ran { sender, _ ->
@@ -251,24 +265,33 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
         }
     )
 
-    //fixme
-//    handler.register(
-//        CommandBuilder<Message, MessageEmbed>("dequeue", "remove", "delete").arg(IntArg("index")).ran { sender, args ->
-//            val state = state(sender) ?: return@ran InternalCommandResult(
-//                    embed("Nothing playing"),
-//                    false
-//                )
-//
-//            if (args["index"] !in 0 until (state.playlistCount - state.playlistPos)) return@ran InternalCommandResult(
-//                embed("${args["index"]} is not a valid index"),
-//                false
-//            )
-//            return@ran InternalCommandResult(
-//                embed("Successfully removed '${state.playlist.removeAt(args["index"] as Int - state.position).info.title}' from the playlist."),
-//                true
-//            )
-//        }
-//    )
+    handler.register(
+        CommandBuilder<Message, MessageEmbed>("dequeue", "remove", "delete").arg(LongArg("index")).ran { sender, args ->
+            val state = state(sender) ?: return@ran InternalCommandResult(
+                    embed("Nothing playing"),
+                    false
+                )
+
+            validateInChannel(sender, state)
+
+            val idx = args["index"] as Long + state.playlistPos
+            if (idx !in 0 until (state.playlistCount - state.playlistPos)) return@ran InternalCommandResult(
+                embed("$idx is not a valid index"),
+                false
+            )
+
+            val found = state[idx] ?: throw CommandException("this should never happen, which is why I'm showing it to the user")
+
+            val info = bot.audio.load(found).firstOrNull()  // it's got caching, it's fine.... right??
+
+            state.remove(idx)
+
+            return@ran InternalCommandResult(
+                embed("Successfully removed '${info?.info?.title}' from the playlist."),
+                true
+            )
+        }
+    )
 
     handler.register(
         CommandBuilder<Message, MessageEmbed>("fastforward").arg(DoubleArg("seconds"))

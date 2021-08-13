@@ -3,6 +3,7 @@ package com.github.corruptedinc.corruptedmainframe.discord
 import com.github.corruptedinc.corruptedmainframe.Config
 import com.github.corruptedinc.corruptedmainframe.audio.Audio
 import com.github.corruptedinc.corruptedmainframe.commands.Commands
+import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.commands.Leveling
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.plugin.Plugin
@@ -92,18 +93,32 @@ class Bot(val config: Config) {
                 log.info("Logged in as ${event.jda.selfUser.asTag}")
                 plugins.forEach { it.botStarted() }
 
-                Timer().schedule(0, 15_000L) {
+                Timer().schedule(0, 1_000L) {
                     for (mute in database.expiringMutes()) {
                         try {
                             transaction(database.db) {
                                 val guild = jda.getGuildById(mute.guild.discordId)!!
                                 val member = guild.getMemberById(mute.user.discordId)!!
                                 val roles = database.roleIds(mute).map { guild.getRoleById(it) }
-                                guild.modifyMemberRoles(member, roles).queue()
+                                guild.modifyMemberRoles(member, roles).queue({}, {})  // ignore errors
                                 database.removeMute(mute)
                             }
                         } catch (e: NullPointerException) {
                             database.removeMute(mute)
+                        }
+                    }
+
+                    database.trnsctn {
+                        for (reminder in database.expiringRemindersNoTransaction()) {
+                            try {
+                                // Make copies of relevant things for thread safety
+                                val text = reminder.text
+                                jda.getTextChannelById(reminder.channelId)?.retrieveMessageById(reminder.messageId)?.queue({
+                                    it.replyEmbeds(embed("Reminder", text)).queue({}, {/*ignore errors*/})
+                                }, {/*ignore errors*/})
+                            } finally {
+                                reminder.delete()
+                            }
                         }
                     }
                 }
