@@ -19,6 +19,7 @@ import net.dv8tion.jda.api.utils.MiscUtil
 import net.dv8tion.jda.api.utils.TimeUtil
 import org.jetbrains.exposed.sql.transactions.transaction
 import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
+import com.jagrosh.jdautilities.command.CommandClientBuilder
 import java.awt.Color
 import java.math.MathContext
 import java.math.RoundingMode
@@ -32,7 +33,9 @@ import kotlin.random.Random
 class Commands(val bot: Bot) {
     val handler = CommandHandler<Message, MessageEmbed>({ commandResult ->
         commandResult.sender.replyEmbeds(commandResult.value ?: return@CommandHandler).complete()
-    }, { _, exception -> embed("Error", description = exception.message) })
+    }, { _, exception -> embed("Error", description = exception.message, color = ERROR_COLOR) })
+
+    val newHandler = CommandClientBuilder()
 
     companion object {
         private fun String.stripPings() = this.replace("@", "\\@")
@@ -79,7 +82,7 @@ class Commands(val bot: Bot) {
 
         private const val HELP_PAGE_LENGTH = 10
 
-        private val INSUFFICIENT_PERMISSIONS_COLOR = Color(235, 70, 70)
+        private val ERROR_COLOR = Color(235, 70, 70)
 
         fun adminInvite(botId: String) =
             "https://discord.com/api/oauth2/authorize?client_id=$botId&permissions=8&scope=bot"
@@ -89,13 +92,15 @@ class Commands(val bot: Bot) {
     }
 
     init {
+        fun String.parseMentionId() = removeSurrounding("<@", ">").removePrefix("!")
+
         class UserArg(name: String, optional: Boolean = false, vararg: Boolean = false) : Argument<User>(User::class,
-            { bot.jda.retrieveUserById(it.removeSurrounding("<@", ">").removePrefix("!")).complete()!! },
-            { bot.jda.retrieveUserById(it.removeSurrounding("<@!", ">")).complete() != null },
+            { bot.jda.retrieveUserById(it.parseMentionId()).complete()!! },
+            { bot.jda.retrieveUserById(it.parseMentionId()).complete() != null },
             name, optional, vararg)
 
         val unauthorized = EmbedBuilder().setTitle("Insufficient Permissions")
-            .setColor(INSUFFICIENT_PERMISSIONS_COLOR).build()
+            .setColor(ERROR_COLOR).build()
 
         val adminValidator = { sender: Message, _: Map<String, Any?> ->
             if (bot.database.user(sender.author).botAdmin || sender.member.admin) null else unauthorized
@@ -283,7 +288,7 @@ class Commands(val bot: Bot) {
                     builder.setDescription("""
                         **Bot Info**
                         Members: ${bot.database.users().size}
-                        Guilds: ${bot.database.guilds().size}
+                        Guilds: ${bot.database.guildCount()}
                         Commands: ${handler.commands.size}
                         Gateway ping: ${bot.jda.gatewayPing}ms
                         Rest ping: ${bot.jda.restPing.complete()}ms
@@ -587,8 +592,8 @@ class Commands(val bot: Bot) {
                 val prefix = bot.database.guild(message.guild).prefix
                 handler.handleAndSend(prefix, message.contentRaw, message)
             } catch (e: Exception) {
-                bot.log.warning("ERROR FROM COMMAND '${message.contentRaw}':")
-                bot.log.warning(e.stackTraceToString())
+                bot.log.warn("ERROR FROM COMMAND '${message.contentRaw}':")
+                bot.log.warn(e.stackTraceToString())
             }
         }
     }

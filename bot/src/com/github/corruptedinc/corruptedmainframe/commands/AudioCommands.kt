@@ -11,6 +11,7 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.audio.hooks.ConnectionListener
 import net.dv8tion.jda.api.audio.hooks.ConnectionStatus
 import net.dv8tion.jda.api.entities.*
@@ -24,7 +25,7 @@ private const val BAR_LENGTH = 15
 private const val QUEUE_VIEW_LENGTH = 5
 private const val MAX_VOLUME = 200
 
-@Suppress("LongMethod", "ComplexMethod")  // why yes, it is a long method
+@Suppress("LongMethod", "ComplexMethod", "ThrowsCount")  // why yes, it is a long method
 fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbed>) {
 
     //fixme channels
@@ -35,8 +36,8 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     suspend fun previous(message: Message) = state(message)?.previous() ?: false
 
     fun validateInChannel(sender: Member?, state: Audio.AudioState) {
-        if (state.channel?.members?.contains(sender) != true) throw CommandException("You must be in the voice " +
-                "channel to use this command!")
+        if (state.channel?.members?.contains(sender) != true)
+            throw CommandException("You must be in ${state.channel?.asMention ?: "ohno"} to use this command!")
     }
 
     fun validateInChannel(sender: Message, state: Audio.AudioState) {
@@ -66,6 +67,10 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
             .ran { sender, args ->
                 val channel = sender.member?.voiceState?.channel
                     ?: throw CommandException("You must be in a voice channel to use this command!")
+
+                if (sender.member?.hasPermission(channel, Permission.VOICE_CONNECT) != true) {
+                    throw CommandException("this can't happen, why am I adding a check for this")
+                }
 
                 val st = state(sender)
                 if (st != null) {

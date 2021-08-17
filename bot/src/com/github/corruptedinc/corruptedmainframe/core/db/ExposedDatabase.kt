@@ -37,12 +37,14 @@ class ExposedDatabase(val db: Database) {
     object GuildMs : LongIdTable(name = "guilds") {
         val discordId = long("discord_id").index(isUnique = true)
         val prefix = varchar("prefix", MAX_PREFIX_LENGTH)
+        val currentlyIn = bool("currently_in").default(true)
     }
 
     class GuildM(id: EntityID<Long>) : LongEntity(id) {
         companion object : LongEntityClass<GuildM>(GuildMs)
-        var discordId by GuildMs.discordId
-        var prefix    by GuildMs.prefix
+        var discordId   by GuildMs.discordId
+        var prefix      by GuildMs.prefix
+        var currentlyIn by GuildMs.currentlyIn
     }
 
     object UserMs : LongIdTable(name = "users") {
@@ -114,7 +116,7 @@ class ExposedDatabase(val db: Database) {
 
     fun users() = transaction(db) { UserM.all().toList() }
 
-    fun guilds() = transaction(db) { GuildM.all().toList() }
+    fun guilds() = transaction(db) { GuildM.find { GuildMs.currentlyIn eq true }.toList() }
 
     fun points(user: User, guild: Guild): Double = trnsctn {
         val u = user(user)
@@ -217,6 +219,8 @@ class ExposedDatabase(val db: Database) {
         val now = LocalDateTime.now()
         return Reminder.find { Reminders.time lessEq now }.toList()
     }
+
+    fun guildCount() = trnsctn { GuildM.count(Op.build { GuildMs.currentlyIn eq true }) }
 
     fun <T> trnsctn(block: Transaction.() -> T): T = transaction(db, block)
 }

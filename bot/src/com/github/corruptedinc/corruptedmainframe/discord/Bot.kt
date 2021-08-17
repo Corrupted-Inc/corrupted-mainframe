@@ -12,7 +12,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.events.ReadyEvent
+import net.dv8tion.jda.api.events.guild.GuildBanEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
+import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
 import net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent
 import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
@@ -23,6 +25,7 @@ import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.requests.GatewayIntent
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.slf4j.impl.Log4jLoggerFactory
 import java.io.File
 import java.net.URL
 import java.net.URLClassLoader
@@ -35,7 +38,7 @@ import kotlin.concurrent.schedule
 
 
 class Bot(val config: Config) {
-    val log: Logger = Logger.getLogger("bot logger")
+    val log = Log4jLoggerFactory().getLogger("main")
     val listeners = MultiListener()
     val startTime: Instant = Instant.now()
     val jda = JDABuilder.create(config.token,
@@ -94,8 +97,8 @@ class Bot(val config: Config) {
                     }
                 }
             } catch (e: Exception) {
-                log.severe("Error loading plugin '${plugin.nameWithoutExtension}'!")
-                log.severe(e.stackTraceToString())
+                log.error("Error loading plugin '${plugin.nameWithoutExtension}'!")
+                log.error(e.stackTraceToString())
             }
         }
 
@@ -135,10 +138,6 @@ class Bot(val config: Config) {
                 }
             }
 
-            override fun onGuildMemberJoin(event: GuildMemberJoinEvent) {
-                database.addLink(event.guild, event.user)
-            }
-
             @Suppress("ReturnCount")  // todo likewise fix maybe?
             override fun onMessageReactionAdd(event: MessageReactionAddEvent) {
                 if (event.user?.let { database.banned(it) } == true) return
@@ -167,6 +166,10 @@ class Bot(val config: Config) {
                 event.guild.loadMembers {
                     database.addLink(event.guild, it.user)
                 }
+            }
+
+            override fun onGuildLeave(event: GuildLeaveEvent) {
+                database.trnsctn { database.guild(event.guild).currentlyIn = false }
             }
         })
     }
