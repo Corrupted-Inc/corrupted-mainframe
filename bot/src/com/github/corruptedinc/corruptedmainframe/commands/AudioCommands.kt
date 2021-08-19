@@ -184,7 +184,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("skip", "next")
+        CommandBuilder<Message, MessageEmbed>("skip", "next", "s")
             .help("Skips to the next song, and stops playing if there are no more.")
             .ran { sender, _ ->
                 val state = state(sender) ?: return@ran InternalCommandResult(
@@ -258,7 +258,7 @@ fun registerAudioCommands(bot: Bot, handler: CommandHandler<Message, MessageEmbe
     )
 
     handler.register(
-        CommandBuilder<Message, MessageEmbed>("dequeue", "remove", "delete").arg(LongArg("index"))
+        CommandBuilder<Message, MessageEmbed>("dequeue", "remove", "delete", "r").arg(LongArg("index"))
             .help("Removes queued items from the playlist.")
             .ran { sender, args ->
                 val state = state(sender) ?: return@ran InternalCommandResult(
