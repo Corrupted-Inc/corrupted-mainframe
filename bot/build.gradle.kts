@@ -10,6 +10,7 @@ sourceSets.main {
 repositories {
     mavenCentral()
     jcenter()  // shut
+    maven("https://jitpack.io/")
 }
 
 dependencies {
@@ -17,6 +18,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.6.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.6.0")
     implementation("net.dv8tion:JDA:4.3.0_280")
+    implementation("com.github.minndevelopment:jda-ktx:ea0a1b23b7efb571aabd580c2e8fcc85ae437789")
     implementation(group = "com.beust", name = "klaxon", version = "5.5")
     implementation(group = "org.xerial", name = "sqlite-jdbc", version = "3.34.0")
     implementation(group = "org.postgresql", name = "postgresql", version = "42.2.16")

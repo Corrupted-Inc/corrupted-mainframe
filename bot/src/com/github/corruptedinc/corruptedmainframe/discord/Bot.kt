@@ -7,6 +7,7 @@ import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.em
 import com.github.corruptedinc.corruptedmainframe.commands.Leveling
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.plugin.Plugin
+import dev.minn.jda.ktx.injectKTX
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -43,7 +44,8 @@ class Bot(val config: Config) {
     val startTime: Instant = Instant.now()
     val jda = JDABuilder.create(config.token,
         GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS,
-        GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES).addEventListeners(listeners).build()
+        GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES).addEventListeners(listeners).injectKTX()
+        .build()
     val scope = CoroutineScope(Dispatchers.Default)
     val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver).apply {
         useNestedTransactions = true
