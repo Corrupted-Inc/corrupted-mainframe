@@ -1,47 +1,47 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.calculator.Calculator
-import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.*
-import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.Command.CommandBuilder
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.VARCHAR_MAX_LENGTH
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Reminders
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.github.corruptedinc.corruptedmainframe.utils.admin
 import com.github.corruptedinc.corruptedmainframe.utils.containsAny
+import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
+import dev.minn.jda.ktx.interactions.replyPaginator
+import dev.minn.jda.ktx.listener
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.MessageEmbed.Field
-import net.dv8tion.jda.api.entities.User
-import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
-import net.dv8tion.jda.api.interactions.components.Button
-import net.dv8tion.jda.api.utils.MiscUtil
-import net.dv8tion.jda.api.utils.TimeUtil
-import org.jetbrains.exposed.sql.transactions.transaction
-import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
-import com.jagrosh.jdautilities.command.CommandClientBuilder
-import dev.minn.jda.ktx.await
-import dev.minn.jda.ktx.interactions.option
-import dev.minn.jda.ktx.listener
+import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.interaction.SlashCommandEvent
+import net.dv8tion.jda.api.exceptions.ErrorResponseException
 import net.dv8tion.jda.api.exceptions.PermissionException
 import net.dv8tion.jda.api.interactions.commands.OptionType
-import net.dv8tion.jda.api.interactions.commands.build.BaseCommand
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
+import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
+import net.dv8tion.jda.api.utils.MiscUtil
+import net.dv8tion.jda.api.utils.TimeUtil
+import org.jetbrains.exposed.sql.Op
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.transactions.transaction
+import org.ocpsoft.prettytime.nlp.PrettyTimeParser
 import java.awt.Color
 import java.math.MathContext
 import java.math.RoundingMode
-import java.time.Duration
-import java.time.Instant
+import java.time.*
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAccessor
+import java.util.*
 import kotlin.math.min
 import kotlin.random.Random
+import kotlin.system.exitProcess
 
 class Commands(val bot: Bot) {
-    val handler = CommandHandler<Message, MessageEmbed>({ commandResult ->
-        commandResult.sender.replyEmbeds(commandResult.value ?: return@CommandHandler).complete()
-    }, { _, exception -> embed("Error", description = exception.message, color = ERROR_COLOR) })
 
     companion object {
         private fun String.stripPings() = this.replace("@", "\\@")
@@ -86,27 +86,32 @@ class Commands(val bot: Bot) {
 
         const val BUTTON_TIMEOUT = 120_000L
 
-        private const val HELP_PAGE_LENGTH = 10
-
         private val ERROR_COLOR = Color(235, 70, 70)
 
+        private const val REMINDERS_PER_PAGE = 15
+        private const val MAX_REMINDERS = 128
+
         fun adminInvite(botId: String) =
-            "https://discord.com/api/oauth2/authorize?client_id=$botId&permissions=8&scope=bot"
+            "https://discord.com/api/oauth2/authorize?client_id=$botId&permissions=8&scope=applications.commands%20bot"
 
         fun basicInvite(botId: String) =
-            "https://discord.com/api/oauth2/authorize?client_id=$botId&permissions=271830080&scope=bot"
+            "https://discord.com/api/oauth2/authorize?client_id=$botId" +
+                    "&permissions=271830080&scope=applications.commands%20bot"
 
         val unauthorized = EmbedBuilder().setTitle("Insufficient Permissions")
             .setColor(ERROR_COLOR).build()
     }
 
+    val newCommands = mutableListOf<CommandData>()
+
     // TODO custom listener pool that handles exceptions
     // TODO cleaner way than upserting the command every time
     fun register(data: CommandData, lambda: suspend (SlashCommandEvent) -> Unit) {
-        bot.jda.upsertCommand(data).complete()
+        newCommands.add(data)
         bot.jda.listener<SlashCommandEvent> {
             if (it.name == data.name) {
                 try {
+                    @Suppress("TooGenericExceptionCaught")
                     try {
                         lambda(it)
                     } catch (e: CommandException) {
@@ -117,6 +122,23 @@ class Commands(val bot: Bot) {
                     }
                 } catch (ignored: PermissionException) {}  // nested try/catch is my favorite
             }
+        }
+    }
+
+    @Suppress("SwallowedException")
+    fun finalizeCommands() {
+        bot.log.info("Registering ${newCommands.size} commands...")
+        bot.jda.guilds.map {
+            try {
+                it.updateCommands().addCommands(newCommands).complete()
+            } catch (e: ErrorResponseException) {
+                bot.log.error("Failed to register commands in ${it.name}")
+            }
+        }
+        bot.log.info("Done")
+
+        bot.jda.listener<GuildJoinEvent> { event ->
+            event.guild.updateCommands().addCommands(newCommands).complete()
         }
     }
 
@@ -139,7 +161,7 @@ class Commands(val bot: Bot) {
 
             assertAdmin(event)
 
-            val reactionsMap = event.getOption("reactions")!!.asString.split(", ")
+            val reactionsMap = event.getOption("reactions")!!.asString.removeSurrounding("\"").split(", ")
                     // Split by colon into emote and role name, stripping spaces from the start of the latter
                     .map { Pair(
                         it.substringBeforeLast(":"),
@@ -177,7 +199,9 @@ class Commands(val bot: Bot) {
         }
 
 
-        register(CommandData("purge", "Purges messages").addOption(OptionType.INTEGER, "count", "The number of messages to purge", true)) { event ->
+        register(CommandData("purge", "Purges messages")
+            .addOption(OptionType.INTEGER, "count", "The number of messages to purge", true)) { event ->
+
             val count = (event.getOption("count")?.asLong ?: throw CommandException("Invalid number")).toInt()
                 .coerceIn(1, MAX_PURGE) + 1
 
@@ -229,7 +253,7 @@ class Commands(val bot: Bot) {
                 **Bot Info**
                 Members: ${bot.database.users().size}
                 Guilds: ${bot.database.guildCount()}
-                Commands: ${handler.commands.size}
+                Commands: ${newCommands.size}
                 Gateway ping: ${bot.jda.gatewayPing}ms
                 Rest ping: ${bot.jda.restPing.complete()}ms
                 Uptime: ${Duration.between(bot.startTime, Instant.now()).toHumanReadable()}
@@ -372,7 +396,8 @@ class Commands(val bot: Bot) {
                 embed("Muted ${user.asTag} for ${Duration.ofSeconds(time).toHumanReadable()}")).complete()
         }
 
-        register(CommandData("unmute", "Unmute a user").addOption(OptionType.USER, "user", "The user to unmute")) { event ->
+        register(CommandData("unmute", "Unmute a user")
+            .addOption(OptionType.USER, "user", "The user to unmute")) { event ->
 
             assertAdmin(event)
             val user = event.getOption("user")?.asUser!!
@@ -389,10 +414,11 @@ class Commands(val bot: Bot) {
         }
 
         register(CommandData("math", "Evaluate arbitrary-precision math")
-            .addOption(OptionType.INTEGER, "precision", "The precision in digits")
             .addOption(OptionType.STRING, "expression", "The expression to evaluate", true)
+            .addOption(OptionType.INTEGER, "precision", "The precision in digits")
         ) { event ->
-            val exp = (event.getOption("expression")!!.asString).replaceBefore("=", "")
+            val exp = (event.getOption("expression")!!.asString).removeSurrounding("\"")  // discord bad
+                .replaceBefore("=", "")
                 .removePrefix(" ")  // for now variables are not allowed
 
             if (exp.containsAny(listOf("sqrt", "sin", "cos", "tan"))) {
@@ -420,6 +446,135 @@ class Commands(val bot: Bot) {
                 event.replyEmbeds(embed("Set level popups to $enabled")).complete()
             }
 
+        register(CommandData("reminders", "Manage reminders").addSubcommands(
+            SubcommandData("list", "List your reminders"),
+            SubcommandData("add", "Add a reminder")
+                .addOption(OptionType.STRING, "name", "The name of the reminder", true)
+                .addOption(OptionType.STRING, "time", "The time at which you will be reminded", true),
+            SubcommandData("remove", "Remove a reminder")
+                .addOption(OptionType.STRING, "name", "The name of the reminder to remove", true))
+        ) { event ->
+            when (event.subcommandName) {
+                "list" -> {
+                    val output = mutableListOf<Field>()
+                    bot.database.trnsctn {
+                        val user = bot.database.user(event.user)
+                        val reminders = ExposedDatabase.Reminder.find { Reminders.user eq user.id }
+                        for (item in reminders) {
+                            output.add(Field(item.text, "<t:${item.time.toEpochSecond(ZoneOffset.UTC)}:R>", false))
+                        }
+                    }
+
+                    val embeds = output.chunked(REMINDERS_PER_PAGE)
+                        .map { embed("${event.user.asTag}'s Reminders", content = it) }
+                    if (embeds.isEmpty()) {
+                        event.replyEmbeds(embed("No reminders")).complete()
+                        return@register
+                    }
+                    @Suppress("SpreadOperator")  // don't have a choice here
+                    event.replyPaginator(*embeds.toTypedArray()).complete()
+                }
+
+                "add" -> {
+                    val name = event.getOption("name")!!.asString
+                    val rawTime = event.getOption("time")!!.asString
+
+                    if (name.length > VARCHAR_MAX_LENGTH - 1)
+                        throw CommandException("Name length must be less than 255 characters!")
+
+                    if (name == "all") throw CommandException("Name cannot be 'all'!")
+
+                    val zone = bot.database.trnsctn { bot.database.user(event.user).timezone }
+
+                    val parser = PrettyTimeParser(TimeZone.getTimeZone(ZoneId.of(zone)))
+
+                    @Suppress("TooGenericExceptionCaught")  // I have no idea what goes on in here
+                    val instant =
+                        try { parser.parse(rawTime).lastOrNull()?.toInstant() } catch (ignored: Exception) { null }
+
+                    instant ?: throw CommandException("Couldn't parse a valid date/time!")
+
+                    if (instant.isBefore(Instant.now())) throw CommandException("Can't add a reminder in the past!")
+
+                    bot.database.trnsctn {
+                        val user = bot.database.user(event.user)
+
+                        if (ExposedDatabase.Reminder.find { (Reminders.user eq user.id) and (Reminders.text eq name) }
+                                .firstOrNull() != null)
+                                    throw CommandException("Can't add two reminders with the same name!")
+
+                        if (ExposedDatabase.Reminder.count(Op.build { Reminders.user eq user.id }) > MAX_REMINDERS)
+                            throw CommandException("You have too many reminders!")
+
+                        ExposedDatabase.Reminder.new {
+                            text = name
+                            time = LocalDateTime.ofInstant(instant, ZoneOffset.UTC)
+                            this.user = user
+                            channelId = event.channel.idLong
+                        }
+                    }
+
+                    // Instant::toString returns an ISO 8601 formatted string
+                    event.replyEmbeds(embed("Added a reminder for $instant",
+                        description = "<t:${instant.epochSecond}:R>")).complete()
+                }
+                "remove" -> {
+                    val name = event.getOption("name")!!.asString
+
+                    if (name == "all") {
+                        val c = bot.database.trnsctn {
+                            val user = bot.database.user(event.user)
+                            var count = 0
+                            for (r in user.reminders) {
+                                r.delete()
+                                count++
+                            }
+                            count
+                        }
+                        event.replyEmbeds(embed("Removed $c reminders")).complete()
+                        return@register
+                    }
+                    val time = bot.database.trnsctn {
+                        val user = bot.database.user(event.user)
+                        val reminder = ExposedDatabase.Reminder.find {
+                            (Reminders.user eq user.id) and (Reminders.text eq name)
+                        }.singleOrNull() ?: throw CommandException("Couldn't find a reminder with that name!")
+                        reminder.time.toEpochSecond(ZoneOffset.UTC)
+                    }
+                    event.replyEmbeds(embed("Removed a reminder set for <t:$time>")).complete()
+                }
+            }
+        }
+
+        register(CommandData("restart", "Restart the bot")) { event ->
+            // Don't replace with assertAdmin(), this doesn't allow server admins to run
+            val isAdmin = bot.database.user(event.user).botAdmin ||
+                    bot.config.permaAdmins.contains(event.user.id)
+
+            if (!isAdmin) throw CommandException("You need to be admin to use this command!")
+
+//            bot.audio.gracefulShutdown()  // handled by shutdown hook in Bot.kt
+            bot.log.error("${event.user.asTag} (id ${event.user.id}) ran /cleanshutdown")
+            event.replyEmbeds(embed("Shutting down...")).complete()
+            exitProcess(0)
+        }
+
+        register(CommandData("timezone", "Set your timezone (used for reminders)")
+            .addOption(OptionType.STRING, "zone", "Your timezone", true)) { event ->
+            @Suppress("TooGenericExceptionCaught", "SwallowedException")
+            val zone = try {
+                ZoneId.of(event.getOption("zone")!!.asString).id
+            } catch (e: Exception /*no multi-catch...*/) {
+                throw CommandException("Couldn't parse a valid time zone!  " +
+                        "Make sure you specify it in either region-based (i.e. America/New_York) or UTC+n format")
+            }
+            bot.database.trnsctn {
+                val user = bot.database.user(event.user)
+                user.timezone = zone
+            }
+            event.replyEmbeds(embed("Set your timezone to $zone")).complete()
+        }
+
 //        handler.register(
 //            CommandBuilder<Message, MessageEmbed>("level").args(UserArg("user", true)).ran { sender, args ->
 //                TODO()
@@ -427,18 +582,10 @@ class Commands(val bot: Bot) {
 //        )
 
         registerAudioCommands(bot, this)
-    }
 
-    fun handle(message: Message) {
-        bot.scope.launch {
-            @Suppress("TooGenericExceptionCaught")
-            try {
-                val prefix = bot.database.guild(message.guild).prefix
-                handler.handleAndSend(prefix, message.contentRaw, message)
-            } catch (e: Exception) {
-                bot.log.warn("ERROR FROM COMMAND '${message.contentRaw}':")
-                bot.log.warn(e.stackTraceToString())
-            }
+        bot.scope.launch(Dispatchers.IO) {
+            bot.jda.awaitReady()
+            finalizeCommands()
         }
     }
 }

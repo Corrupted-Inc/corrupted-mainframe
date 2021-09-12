@@ -1,8 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.audio.Audio
-import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.*
-import com.github.corruptedinc.corruptedmainframe.commands.CommandHandler.Command.CommandBuilder
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer
@@ -20,7 +18,6 @@ import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
 import net.dv8tion.jda.api.interactions.components.Button
 import kotlin.math.floor
-import kotlin.math.roundToLong
 import kotlin.random.Random
 
 private const val SPACES_TO_EMOTE = 4
@@ -31,10 +28,13 @@ private const val MAX_VOLUME = 200
 @Suppress("LongMethod", "ComplexMethod", "ThrowsCount")  // why yes, it is a long method
 fun registerAudioCommands(bot: Bot, commands: Commands) {
 
-    fun nothingPlaying(): Nothing = throw CommandException("Nothing playing")
+    fun nothingPlaying(guild: Guild?): Nothing {
+        guild?.audioManager?.closeAudioConnection()
+        throw CommandException("Nothing playing")
+    }
 
     fun state(member: Member?) = bot.audio.currentlyPlaying
-        .singleOrNull { it.channel?.guild == member?.guild && it.channel?.members?.contains(member) == true }
+        .singleOrNull { it.channel?.members?.contains(member) == true }
 
     suspend fun next(member: Member?) = state(member)?.next() ?: false
 
@@ -65,9 +65,10 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         }
 
         val st = state(event.member)
-        val source = event.getOption("source")!!.asString
+        val source = event.getOption("source")!!.asString.removeSurrounding("\"")
         if (st != null) {
             event.replyEmbeds(queue(event.member, source)).complete()
+            return@register
         }
         @Suppress("MagicNumber")
         delay(1000L)  // TODO is this even needed?
@@ -110,7 +111,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("pause", "Pause the current song")) { event ->
-        val state = state(event.member) ?: nothingPlaying()
+        val state = state(event.member) ?: nothingPlaying(event.guild)
         validateInChannel(event.member, state)
 
         state.paused = true
@@ -118,7 +119,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("resume", "Unpause the current song")) { event ->
-        val state = state(event.member) ?: nothingPlaying()
+        val state = state(event.member) ?: nothingPlaying(event.guild)
         validateInChannel(event.member, state)
 
         state.paused = false
@@ -127,7 +128,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
 
     commands.register(CommandData("volume", "Set the volume")
         .addOption(OptionType.INTEGER, "percentage", "The volume percentage", true)) { event ->
-            val state = state(event.member) ?: nothingPlaying()
+            val state = state(event.member) ?: nothingPlaying(event.guild)
             validateInChannel(event.member, state)
 
             val vol = event.getOption("percentage")!!.asLong.toInt().coerceIn(0, MAX_VOLUME)
@@ -137,7 +138,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         }
 
     commands.register(CommandData("stop", "Stop playing")) { event ->
-        val state = state(event.member) ?: nothingPlaying()
+        val state = state(event.member) ?: nothingPlaying(event.guild)
         validateInChannel(event.member, state)
         state.destroy()
 
@@ -145,7 +146,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("skip", "Skip to the next song")) { event ->
-        val state = state(event.member) ?: nothingPlaying()
+        val state = state(event.member) ?: nothingPlaying(event.guild)
 
         validateInChannel(event.member, state)
 
@@ -157,7 +158,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("previous", "Skip to the previous song")) { event ->
-        val state = state(event.member) ?: nothingPlaying()
+        val state = state(event.member) ?: nothingPlaying(event.guild)
 
         validateInChannel(event.member, state)
 
@@ -169,7 +170,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("shuffle", "Shuffle the playlist")) { event ->
-        val state = state(event.member) ?: nothingPlaying()
+        val state = state(event.member) ?: nothingPlaying(event.guild)
 
         validateInChannel(event.member, state)
 
@@ -179,7 +180,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("queue", "Show the queue")) { event ->
-        val state = state(event.member) ?: nothingPlaying()
+        val state = state(event.member) ?: nothingPlaying(event.guild)
 
         validateInChannel(event.member, state)
 
@@ -197,12 +198,13 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
 
     commands.register(CommandData("remove", "Remove an item from the queue")
         .addOption(OptionType.INTEGER, "index", "The number of the item to remove", true)) { event ->
-        val state = state(event.member) ?: nothingPlaying()
+        val state = state(event.member) ?: nothingPlaying(event.guild)
 
         validateInChannel(event.member, state)
 
         val idx = event.getOption("index")!!.asLong + state.playlistPos
-        if (idx !in 0 until (state.playlistCount - state.playlistPos)) throw CommandException("$idx is not a valid index")
+        if (idx !in 0 until (state.playlistCount - state.playlistPos))
+            throw CommandException("$idx is not a valid index")
 
         val found = state[idx]
             ?: throw CommandException("this should never happen, which is why I'm showing it to the user")
@@ -217,7 +219,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     commands.register(CommandData("fastforward", "Skip forward in the current song")
         .addOption(OptionType.INTEGER, "seconds", "The number of seconds to skip", true)) { event ->
 
-        val state = state(event.member) ?: nothingPlaying()
+        val state = state(event.member) ?: nothingPlaying(event.guild)
         validateInChannel(event.member, state)
 
         val seconds = event.getOption("seconds")!!.asLong.coerceAtLeast(0)
@@ -229,7 +231,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("playing", "Show what is currently playing")) { event ->
-        val state = state(event.member) ?: nothingPlaying()
+        val state = state(event.member) ?: nothingPlaying(event.guild)
         val length = BAR_LENGTH
         val timeFraction = (state.progress ?: 0) / (state.currentlyPlayingTrack?.duration?.toDouble() ?: 1.0)
         val dashCount = floor(timeFraction * length).toInt()
@@ -253,7 +255,8 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         )
 
         @Suppress("SpreadOperator")
-        val message = event.replyEmbeds(embed).addActionRow(*buttons(false)).complete().retrieveOriginal().complete().idLong
+        val message = event.replyEmbeds(embed).addActionRow(*buttons(false)).complete().retrieveOriginal()
+            .complete().idLong
         val channelId = event.channel.idLong
 
         val listener = listener@ { buttonEvent: ButtonClickEvent ->

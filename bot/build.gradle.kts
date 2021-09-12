@@ -24,15 +24,18 @@ dependencies {
     implementation(group = "org.postgresql", name = "postgresql", version = "42.2.16")
     implementation(group = "org.apache.logging.log4j", name = "log4j", version = "2.14.1")
     implementation(group = "org.slf4j", name = "slf4j-log4j12", version = "1.7.30")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.5.0")
+//    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.5.2")
+//    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.5.2")
     implementation(group = "org.jetbrains.exposed", name = "exposed-dao", version = "0.33.1")
     implementation(group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "0.33.1")
     implementation(group = "org.jetbrains.exposed", name = "exposed-java-time", version = "0.33.1")
-    implementation("com.sedmelluq:lavaplayer:1.3.76")
+    implementation("com.sedmelluq:lavaplayer:1.3.73")
+    runtimeOnly("com.sedmelluq:lavaplayer-common:1.0.6")
     implementation("com.google.guava:guava:30.1.1-jre")
     implementation("ch.obermuhlner:kotlin-big-math:2.3.0")
     implementation("ch.obermuhlner:big-math:2.3.0")
     implementation("com.jagrosh:jda-utilities:3.0.5")
+    implementation("org.ocpsoft.prettytime:prettytime-nlp:5.0.1.Final")
 }
 
 detekt {
@@ -84,5 +87,11 @@ tasks {
         archives(sourcesJar)
         archives(javadocJar)
         archives(jar)
+    }
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    kotlinOptions {
+        freeCompilerArgs = freeCompilerArgs + "-Xopt-in=kotlin.RequiresOptIn"
     }
 }

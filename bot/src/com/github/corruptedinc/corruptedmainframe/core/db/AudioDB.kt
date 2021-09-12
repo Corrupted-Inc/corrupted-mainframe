@@ -47,19 +47,20 @@ class AudioDB(val database: ExposedDatabase) {
 
     fun musicStates() = database.trnsctn { MusicState.all().toList() }
 
-    fun musicStates(guild: Guild): List<AudioDB.MusicState> {
+    fun musicStates(guild: Guild): List<MusicState> {
         val guildm = database.guild(guild)
         return database.trnsctn { MusicState.find { MusicStates.guild eq guildm.id }.toList() }
     }
 
-    fun musicState(guild: Guild, channel: VoiceChannel): AudioDB.MusicState? {
+    fun musicState(guild: Guild, channel: VoiceChannel): MusicState? {
         val guildm = database.guild(guild)
         return database.trnsctn { MusicState.find {
             (MusicStates.guild eq guildm.id) and (MusicStates.channel eq channel.idLong)
         }.firstOrNull() }
     }
 
-    fun clearMusicState(state: AudioDB.MusicState) {
+    fun clearMusicState(state: MusicState?) {
+        state ?: return
         database.trnsctn {
             for (item in state.items) {
                 item.delete()
@@ -68,7 +69,7 @@ class AudioDB(val database: ExposedDatabase) {
         }
     }
 
-    fun updateMusicState(state: AudioDB.MusicState, position: Long, paused: Boolean, volume: Int, playlistPos: Long) {
+    fun updateMusicState(state: MusicState, position: Long, paused: Boolean, volume: Int, playlistPos: Long) {
         database.trnsctn {
             state.position = position
             state.paused = paused
@@ -77,7 +78,7 @@ class AudioDB(val database: ExposedDatabase) {
         }
     }
 
-    fun updateMusicState(state: AudioDB.MusicState, paused: Boolean, volume: Int, position: Long, playlistPos: Long) {
+    fun updateMusicState(state: MusicState, paused: Boolean, volume: Int, position: Long, playlistPos: Long) {
         database.trnsctn {
             state.position = position
             state.paused = paused
@@ -86,14 +87,14 @@ class AudioDB(val database: ExposedDatabase) {
         }
     }
 
-    fun playlistItem(state: AudioDB.MusicState, position: Long): String? =
+    fun playlistItem(state: MusicState, position: Long): String? =
         database.trnsctn {
             PlaylistEntry.find {
                 (PlaylistEntries.state eq state.id) and (PlaylistEntries.position eq position)
             }.toList().firstOrNull()?.audioSource
         }
 
-    fun playlistItems(state: AudioDB.MusicState, range: LongRange): List<String> {
+    fun playlistItems(state: MusicState, range: LongRange): List<String> {
         return database.trnsctn {
             PlaylistEntry.find {
                 (PlaylistEntries.state eq state.id) and
@@ -102,7 +103,7 @@ class AudioDB(val database: ExposedDatabase) {
         }
     }
 
-    fun addPlaylistItem(state: AudioDB.MusicState, track: String): Long {
+    fun addPlaylistItem(state: MusicState, track: String): Long {
         return database.trnsctn {
             val pos = state.items.maxOf { it.position } + 1
             PlaylistEntry.new {
@@ -114,9 +115,12 @@ class AudioDB(val database: ExposedDatabase) {
         }
     }
 
-    fun createMusicState(channel: VoiceChannel, tracks: List<String>): AudioDB.MusicState {
+    fun createMusicState(channel: VoiceChannel, tracks: List<String>): MusicState {
         val guild = database.guild(channel.guild)
         return database.trnsctn {
+            val oldState = MusicState.find { MusicStates.channel eq channel.idLong }.firstOrNull()
+            if (oldState != null) clearMusicState(oldState)
+
             val state = MusicState.new {
                 position = 0L
                 playlistPos = 0L
@@ -138,7 +142,7 @@ class AudioDB(val database: ExposedDatabase) {
         }
     }
 
-    fun addPlaylistItems(state: AudioDB.MusicState, tracks: List<AudioTrack>) {
+    fun addPlaylistItems(state: MusicState, tracks: List<AudioTrack>) {
         database.trnsctn {
             var pos = state.items.maxOf { it.position } + 1
             for (t in tracks) {
@@ -151,7 +155,7 @@ class AudioDB(val database: ExposedDatabase) {
         }
     }
 
-    fun playlistEntryCount(state: AudioDB.MusicState): Long {
+    fun playlistEntryCount(state: MusicState): Long {
         return database.trnsctn { state.items.count() }
     }
 }

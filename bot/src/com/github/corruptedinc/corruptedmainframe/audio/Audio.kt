@@ -17,6 +17,7 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import com.sedmelluq.discord.lavaplayer.track.BasicAudioPlaylist
 import com.sedmelluq.discord.lavaplayer.track.playback.AudioFrame
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
+import dev.minn.jda.ktx.listener
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -44,27 +45,25 @@ class Audio(val bot: Bot) {
     }
 
     init {
-        bot.listeners.add(object : ListenerAdapter() {
-            override fun onReady(event: ReadyEvent) {
-                for (item in bot.database.audioDB.musicStates()) {
-                    // Because sharding, only restart playing for guilds that it's actually connected to
-                    if (bot.jda.guilds.any { it.idLong == bot.database.trnsctn { item.guild.discordId } }) {
-                        currentlyPlaying.add(AudioState(item))
-                    }
+        bot.jda.listener<ReadyEvent> { _ ->
+            for (item in bot.database.audioDB.musicStates()) {
+                // Because sharding, only restart playing for guilds that it's actually connected to
+                if (bot.jda.guilds.any { it.idLong == bot.database.trnsctn { item.guild.discordId } }) {
+                    currentlyPlaying.add(AudioState(item))
                 }
             }
+        }
 
-            override fun onGuildVoiceMove(event: GuildVoiceMoveEvent) {
-                if (event.entity.user == bot.jda.selfUser) {
-                    val state = currentlyPlaying.find { it.channelId == event.channelLeft.idLong }
-                    if (state == null) {
-                        event.guild.audioManager.closeAudioConnection()
-                        return
-                    }
-                    state.channelId = event.channelJoined.idLong
+        bot.jda.listener<GuildVoiceMoveEvent> { event ->
+            if (event.entity.user == bot.jda.selfUser) {
+                val state = currentlyPlaying.find { it.channelId == event.channelLeft.idLong }
+                if (state == null) {
+                    event.guild.audioManager.closeAudioConnection()
+                    return@listener
                 }
+                state.channelId = event.channelJoined.idLong
             }
-        })
+        }
     }
 
     private val cache: Cache<String, List<AudioTrack>> = CacheBuilder.newBuilder().maximumSize(MAX_CACHE_SIZE)
@@ -132,7 +131,15 @@ class Audio(val bot: Bot) {
         var playlistPos: Long
         val playlistCount get() = bot.database.audioDB.playlistEntryCount(databaseState)
         var channelId: Long
-            set(value) { bot.database.trnsctn { databaseState.channel = value }; field = value }
+            set(value) {
+                @Suppress("TooGenericExceptionCaught", "SwallowedException")
+                try {
+                    bot.database.trnsctn { databaseState.channel = value }
+                } catch (e: NullPointerException) {
+                    destroy()
+                }
+                field = value
+            }
 
         constructor(channel: VoiceChannel, player: AudioPlayerSendHandler,
                     playlist: MutableList<AudioTrack>, position: Long) {
@@ -182,6 +189,7 @@ class Audio(val bot: Bot) {
             playlistCache = transaction(bot.database.db) { databaseState.items.map { it.audioSource } }
             this.databaseState = databaseState
             currentlyPlaying.add(this)
+            bot.log.info("Resuming music in ${channel?.guild?.name}")
         }
 
         private val playlistCache: List<String>
@@ -255,7 +263,11 @@ class Audio(val bot: Bot) {
 
         fun destroy() {
             try {
-                bot.database.audioDB.clearMusicState(databaseState)
+                try {
+                    bot.database.audioDB.clearMusicState(databaseState)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             } finally {
                 channel?.guild?.audioManager?.closeAudioConnection()
                 currentlyPlaying.remove(this)

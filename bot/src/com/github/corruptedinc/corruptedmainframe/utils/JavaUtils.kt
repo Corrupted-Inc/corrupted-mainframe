@@ -1,8 +1,11 @@
 package com.github.corruptedinc.corruptedmainframe.utils
 
+import java.text.ParseException
+import java.text.SimpleDateFormat
 import java.time.Duration
 import java.util.*
 import kotlin.math.min
+
 
 fun Duration.toHumanReadable(): String {
     return toString().removePrefix("PT")
@@ -47,3 +50,54 @@ fun levenshtein(lhs : CharSequence, rhs : CharSequence) : Int {
 }
 
 fun String.containsAny(items: Iterable<String>) = items.any { it in this }
+
+private val DATE_FORMAT_REGEXPS = listOf(
+    "^\\d{8}$".toRegex() to "yyyyMMdd",
+    "^\\d{1,2}-\\d{1,2}-\\d{4}$".toRegex() to "dd-MM-yyyy",
+    "^\\d{4}-\\d{1,2}-\\d{1,2}$".toRegex() to "yyyy-MM-dd",
+    "^\\d{1,2}/\\d{1,2}/\\d{4}$".toRegex() to "MM/dd/yyyy",
+    "^\\d{4}/\\d{1,2}/\\d{1,2}$".toRegex() to "yyyy/MM/dd",
+    "^\\d{1,2}\\s[a-z]{3}\\s\\d{4}$".toRegex() to "dd MMM yyyy",
+    "^\\d{1,2}\\s[a-z]{4,}\\s\\d{4}$".toRegex() to "dd MMMM yyyy",
+    "^\\d{12}$".toRegex() to "yyyyMMddHHmm",
+    "^\\d{8}\\s\\d{4}$".toRegex() to "yyyyMMdd HHmm",
+    "^\\d{1,2}-\\d{1,2}-\\d{4}\\s\\d{1,2}:\\d{2}$".toRegex() to "dd-MM-yyyy HH:mm",
+    "^\\d{4}-\\d{1,2}-\\d{1,2}\\s\\d{1,2}:\\d{2}$".toRegex() to "yyyy-MM-dd HH:mm",
+    "^\\d{1,2}/\\d{1,2}/\\d{4}\\s\\d{1,2}:\\d{2}$".toRegex() to "MM/dd/yyyy HH:mm",
+    "^\\d{4}/\\d{1,2}/\\d{1,2}\\s\\d{1,2}:\\d{2}$".toRegex() to "yyyy/MM/dd HH:mm",
+    "^\\d{1,2}\\s[a-z]{3}\\s\\d{4}\\s\\d{1,2}:\\d{2}$".toRegex() to "dd MMM yyyy HH:mm",
+    "^\\d{1,2}\\s[a-z]{4,}\\s\\d{4}\\s\\d{1,2}:\\d{2}$".toRegex() to "dd MMMM yyyy HH:mm",
+    "^\\d{14}$".toRegex() to "yyyyMMddHHmmss",
+    "^\\d{8}\\s\\d{6}$".toRegex() to "yyyyMMdd HHmmss",
+    "^\\d{1,2}-\\d{1,2}-\\d{4}\\s\\d{1,2}:\\d{2}:\\d{2}$".toRegex() to "dd-MM-yyyy HH:mm:ss",
+    "^\\d{4}-\\d{1,2}-\\d{1,2}\\s\\d{1,2}:\\d{2}:\\d{2}$".toRegex() to "yyyy-MM-dd HH:mm:ss",
+    "^\\d{1,2}/\\d{1,2}/\\d{4}\\s\\d{1,2}:\\d{2}:\\d{2}$".toRegex() to "MM/dd/yyyy HH:mm:ss",
+    "^\\d{4}/\\d{1,2}/\\d{1,2}\\s\\d{1,2}:\\d{2}:\\d{2}$".toRegex() to "yyyy/MM/dd HH:mm:ss",
+    "^\\d{1,2}\\s[a-z]{3}\\s\\d{4}\\s\\d{1,2}:\\d{2}:\\d{2}$".toRegex() to "dd MMM yyyy HH:mm:ss",
+    "^\\d{1,2}\\s[a-z]{4,}\\s\\d{4}\\s\\d{1,2}:\\d{2}:\\d{2}$".toRegex() to "dd MMMM yyyy HH:mm:ss"
+).toMap()
+
+/**
+ * Determine SimpleDateFormat pattern matching with the given date string. Returns null if
+ * format is unknown. You can simply extend DateUtil with more formats if needed.
+ * @param dateString The date string toa determine the SimpleDateFormat pattern for.
+ * @return The matching SimpleDateFormat pattern, or null if format is unknown.
+ * @see SimpleDateFormat
+ */
+fun determineDateFormat(dateString: String): String? {
+    for (regexp in DATE_FORMAT_REGEXPS.keys) {
+        if (dateString.lowercase().matches(regexp)) {
+            return DATE_FORMAT_REGEXPS[regexp]
+        }
+    }
+    return null // Unknown format.
+}
+
+fun String.date(): Date? {
+    val format = determineDateFormat(this) ?: return null
+    return try {
+        SimpleDateFormat(format).parse(this)
+    } catch (e: ParseException) {
+        null
+    }
+}

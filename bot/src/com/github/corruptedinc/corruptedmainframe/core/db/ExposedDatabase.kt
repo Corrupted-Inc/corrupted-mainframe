@@ -9,6 +9,7 @@ import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.`java-time`.datetime
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.LocalDateTime
+import java.time.ZoneId
 
 class ExposedDatabase(val db: Database) {
     val audioDB = AudioDB(this)
@@ -51,6 +52,7 @@ class ExposedDatabase(val db: Database) {
         val discordId = long("discord_id").index(isUnique = true)
         val botAdmin  = bool("admin")
         val banned    = bool("banned").default(false)
+        val timezone  = text("timezone").default("UTC")
     }
 
     class UserM(id: EntityID<Long>) : LongEntity(id) {
@@ -59,6 +61,7 @@ class ExposedDatabase(val db: Database) {
         var discordId by UserMs.discordId
         var botAdmin  by UserMs.botAdmin
         var banned    by UserMs.banned
+        var timezone  by UserMs.timezone
         var guilds    by GuildM via GuildUsers
         val reminders by Reminder referrersOn Reminders.user
     }
@@ -88,16 +91,14 @@ class ExposedDatabase(val db: Database) {
     }
 
     object Reminders : LongIdTable(name = "reminders") {
-        val messageId = long("messageid")
         val user = reference("user", UserMs)
         val channelId = long("channelid")
         val time = datetime("time")
-        val text = text("text")
+        val text = varchar("text", VARCHAR_MAX_LENGTH)
     }
 
     class Reminder(id: EntityID<Long>) : LongEntity(id) {
         companion object : LongEntityClass<Reminder>(Reminders)
-        var messageId by Reminders.messageId
         var user      by UserM referencedOn Reminders.user
         var channelId by Reminders.channelId
         var time      by Reminders.time

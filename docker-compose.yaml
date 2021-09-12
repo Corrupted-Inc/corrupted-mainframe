@@ -12,7 +12,7 @@ services:
 
   bot:
     image: openjdk:14
-    command: bash -c "cd /root/; java -jar corrupted-mainframe.jar"
+    command: bash -c "cd /root/; while true; do java -jar corrupted-mainframe.jar; done"
     depends_on:
       - db
     volumes:
