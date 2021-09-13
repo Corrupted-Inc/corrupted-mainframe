@@ -80,7 +80,7 @@ class Commands(val bot: Bot) {
         private const val SLOTS_HEIGHT = 3
         private const val SLOTS_WIDTH = 6
 
-        private const val MAX_PURGE = 1_000
+        private const val MAX_PURGE = 1000
         private const val PURGE_DELAY = 2000L
 
         const val BUTTON_TIMEOUT = 120_000L
