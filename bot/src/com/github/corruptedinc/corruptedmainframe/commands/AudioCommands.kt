@@ -198,7 +198,9 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
             println("$it: $range")
             val songs = state.range(range).withIndex()
             val tracks = runBlocking {
-                songs.asFlow().mapNotNull { track -> Pair(bot.audio.metadata(track.value) ?: return@mapNotNull null, track.index) }.toList()
+                songs.asFlow().mapNotNull { track ->
+                    Pair(bot.audio.metadata(track.value) ?: return@mapNotNull null, track.index)
+                }.toList()
             }
             val fields = tracks.map { item ->
                 MessageEmbed.Field(

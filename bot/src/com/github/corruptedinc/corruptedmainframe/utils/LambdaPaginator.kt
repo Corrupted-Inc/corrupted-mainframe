@@ -21,7 +21,9 @@ val DEFAULT_PREV = Button.secondary("prev", Emoji.fromUnicode("⬅️"))
 val DEFAULT_NEXT = Button.secondary("next", Emoji.fromUnicode("➡️"))
 val DEFAULT_DELETE = Button.danger("delete", Emoji.fromUnicode("\uD83D\uDEAE"))
 
-class LambdaPaginator internal constructor(private val nonce: String, private val ttl: Long, private val page: (Long) -> MessageEmbed, private val size: Long): EventListener {
+class LambdaPaginator internal constructor(private val nonce: String, private val ttl: Long,
+                                           private val page: (Long) -> MessageEmbed,
+                                           private val size: Long): EventListener {
     private var expiresAt: Long = System.currentTimeMillis() + ttl
 
     private var index = 0L
@@ -46,9 +48,8 @@ class LambdaPaginator internal constructor(private val nonce: String, private va
 
     @SubscribeEvent
     override fun onEvent(event: GenericEvent) {
-        if (expiresAt < System.currentTimeMillis())
-            return unregister(event.jda)
-        if (event !is ButtonInteraction) return
+        if (expiresAt < System.currentTimeMillis()) unregister(event.jda)
+        if (event !is ButtonInteraction || expiresAt < System.currentTimeMillis()) return
         val buttonId = event.componentId
         if (!buttonId.startsWith(nonce) || !filter(event)) return
         expiresAt = System.currentTimeMillis() + ttl
@@ -93,6 +94,7 @@ class LambdaPaginator internal constructor(private val nonce: String, private va
     }
 }
 
+@Suppress("MagicNumber")
 internal fun paginator(size: Long, lambda: (Long) -> MessageEmbed, jda: JDA): LambdaPaginator {
     val nonce = ByteArray(32)
     SecureRandom().nextBytes(nonce)

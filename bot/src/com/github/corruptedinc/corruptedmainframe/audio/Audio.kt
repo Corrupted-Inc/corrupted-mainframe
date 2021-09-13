@@ -276,10 +276,11 @@ class Audio(val bot: Bot) {
 
         fun destroy() {
             try {
+                @Suppress("TooGenericExceptionCaught")
                 try {
                     bot.database.audioDB.clearMusicState(databaseState)
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    bot.log.error("Error while clearing music state!\n" + e.stackTraceToString())
                 }
             } finally {
                 channel?.guild?.audioManager?.closeAudioConnection()
