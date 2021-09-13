@@ -11,12 +11,10 @@ import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager
 import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException
-import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist
-import com.sedmelluq.discord.lavaplayer.track.AudioTrack
-import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
-import com.sedmelluq.discord.lavaplayer.track.BasicAudioPlaylist
 import com.sedmelluq.discord.lavaplayer.track.playback.AudioFrame
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
+import com.google.common.cache.LoadingCache
+import com.sedmelluq.discord.lavaplayer.track.*
 import dev.minn.jda.ktx.listener
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -40,8 +38,10 @@ class Audio(val bot: Bot) {
 
     companion object {
         private const val BUSYWAITING_DELAY = 50L
-        private const val MAX_CACHE_SIZE = 1024L
+        private const val MAX_CACHE_SIZE = 256L
+        private const val MAX_METADATA_CACHE_SIZE = 1024L
         private const val CACHE_RET_MINUTES = 10L
+        private const val METADATA_CACHE_RET_MINUTES = 60L
     }
 
     init {
@@ -73,6 +73,16 @@ class Audio(val bot: Bot) {
         }
     })
 
+    private val metadataCache: LoadingCache<String, AudioTrackInfo> = CacheBuilder.newBuilder()
+        .maximumSize(MAX_METADATA_CACHE_SIZE).expireAfterWrite(METADATA_CACHE_RET_MINUTES, TimeUnit.MINUTES)
+        .build(object : CacheLoader<String, AudioTrackInfo>() {
+            override fun load(key: String): AudioTrackInfo {
+                return runBlocking { load(key, search = false) }.first().info
+            }
+        })
+
+    fun metadata(source: String?): AudioTrackInfo? = if (source == null) null else metadataCache[source]
+
     // TODO restructure into a function that takes cache into account and one that doesn't
     @SuppressWarnings("ReturnCount")
     suspend fun load(source: String?, search: Boolean = false, nocache: Boolean = false): List<AudioTrack> {
@@ -92,6 +102,8 @@ class Audio(val bot: Bot) {
             override fun trackLoaded(track1: AudioTrack?) {
                 done = true
                 track = BasicAudioPlaylist("playlist", listOf(track1), track1, false)
+                val info = track1?.info
+                if (info != null) metadataCache.put(source, info)
             }
 
             override fun noMatches() {
@@ -105,6 +117,7 @@ class Audio(val bot: Bot) {
             }
         })
 
+        // TODO make infinite delay job and cancel it when done
         while (!done) {
             delay(BUSYWAITING_DELAY)
         }

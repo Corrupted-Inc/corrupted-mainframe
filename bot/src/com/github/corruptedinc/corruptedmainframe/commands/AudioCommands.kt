@@ -3,12 +3,18 @@ package com.github.corruptedinc.corruptedmainframe.commands
 import com.github.corruptedinc.corruptedmainframe.audio.Audio
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
+import com.github.corruptedinc.corruptedmainframe.utils.replyLambdaPaginator
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer
 import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.audio.hooks.ConnectionListener
 import net.dv8tion.jda.api.audio.hooks.ConnectionStatus
@@ -17,6 +23,8 @@ import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
 import net.dv8tion.jda.api.interactions.components.Button
+import kotlin.coroutines.coroutineContext
+import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.random.Random
 
@@ -106,8 +114,8 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
             override fun onUserSpeaking(user: User, speaking: Boolean) {}
         }
 
-        val first = bot.audio.load(state.current()).firstOrNull()
-        event.replyEmbeds(embed("Playing ${first?.info?.title}", url = first?.info?.uri)).complete()
+        val first = bot.audio.metadata(state.current())
+        event.replyEmbeds(embed("Playing ${first?.title}", url = first?.uri)).complete()
     }
 
     commands.register(CommandData("pause", "Pause the current song")) { event ->
@@ -184,16 +192,32 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
 
         validateInChannel(event.member, state)
 
-        event.replyEmbeds(
-        embed(
-            "Queue",
-            content = state.range(state.playlistPos..(state.playlistPos + QUEUE_VIEW_LENGTH))
-                .mapIndexedNotNull { i, it ->
-                    val loaded = bot.audio.load(it).firstOrNull() ?: return@mapIndexedNotNull null
-                    MessageEmbed.Field("#$i: ${loaded.info.title}", loaded.info.author, false)
-                }
-                .reversed()
-        )).complete()
+        val size = ceil((state.playlistCount - state.playlistPos) / QUEUE_VIEW_LENGTH.toDouble()).toLong()
+        event.replyLambdaPaginator(size) {
+            val range = (it * QUEUE_VIEW_LENGTH) until ((it + 1) * QUEUE_VIEW_LENGTH)
+            println("$it: $range")
+            val songs = state.range(range).withIndex()
+            val tracks = runBlocking {
+                songs.asFlow().mapNotNull { track -> Pair(bot.audio.metadata(track.value) ?: return@mapNotNull null, track.index) }.toList()
+            }
+            val fields = tracks.map { item ->
+                MessageEmbed.Field(
+                    "#${item.second + range.first}: ${item.first.title}",
+                    item.first.author, false)
+            }
+            embed("Queue (${it + 1} / $size)", content = fields)
+        }
+
+//        event.replyEmbeds(
+//        embed(
+//            "Queue",
+//            content = state.range(state.playlistPos..(state.playlistPos + QUEUE_VIEW_LENGTH))
+//                .mapIndexedNotNull { i, it ->
+//                    val loaded = bot.audio.load(it).firstOrNull() ?: return@mapIndexedNotNull null
+//                    MessageEmbed.Field("#$i: ${loaded.info.title}", loaded.info.author, false)
+//                }
+//                .reversed()
+//        )).complete()
     }
 
     commands.register(CommandData("remove", "Remove an item from the queue")
@@ -209,11 +233,11 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         val found = state[idx]
             ?: throw CommandException("this should never happen, which is why I'm showing it to the user")
 
-        val info = bot.audio.load(found).firstOrNull()  // it's got caching, it's fine.... right??
+        val info = bot.audio.metadata(found)
 
         state.remove(idx)
 
-        event.replyEmbeds(embed("Successfully removed '${info?.info?.title}' from the playlist.")).complete()
+        event.replyEmbeds(embed("Successfully removed '${info?.title}' from the playlist.")).complete()
     }
 
     commands.register(CommandData("fastforward", "Skip forward in the current song")
