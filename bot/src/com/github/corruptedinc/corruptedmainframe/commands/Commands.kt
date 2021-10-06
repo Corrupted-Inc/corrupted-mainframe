@@ -158,7 +158,7 @@ class Commands(val bot: Bot) {
             .addOption(OptionType.STRING, "message", "Message link", true)
             .addOption(OptionType.STRING, "reactions", "Reactions", true))
             .addOption(OptionType.STRING, "role", "role name", true)) { event ->
-                    // case sensitive
+                    // case sensitive because of unpingable roles
             assertAdmin(event)
 
             val reactionsMap = event.getOption("reactions")!!.asString.removeSurrounding("\"").split(", ")
