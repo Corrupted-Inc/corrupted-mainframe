@@ -154,10 +154,11 @@ class Commands(val bot: Bot) {
             )).complete()
         }
 
-        register(CommandData("reactionrole", "description")
+        register(CommandData("reactionrole", "Adds toggleable reaction roles to a message")
             .addOption(OptionType.STRING, "message", "Message link", true)
-            .addOption(OptionType.STRING, "reactions", "Reactions", true)) { event ->
-
+            .addOption(OptionType.STRING, "reactions", "Reactions", true))
+            .addOption(OptionType.STRING, "role", "role name", true)) { event ->
+                    // case sensitive because of unpingable roles. Plan on adding role IDs as an option.
             assertAdmin(event)
 
             val reactionsMap = event.getOption("reactions")!!.asString.removeSurrounding("\"").split(", ")
