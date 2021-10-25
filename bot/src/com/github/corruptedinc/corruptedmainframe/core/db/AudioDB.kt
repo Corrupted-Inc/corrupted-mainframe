@@ -5,6 +5,7 @@ import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.VoiceChannel
 import org.jetbrains.exposed.dao.LongEntity
 import org.jetbrains.exposed.dao.LongEntityClass
+import org.jetbrains.exposed.dao.exceptions.EntityNotFoundException
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.and
@@ -62,10 +63,12 @@ class AudioDB(val database: ExposedDatabase) {
     fun clearMusicState(state: MusicState?) {
         state ?: return
         database.trnsctn {
-            for (item in state.items) {
-                item.delete()
-            }
-            state.delete()
+            try {
+                for (item in state.items) {
+                    item.delete()
+                }
+                state.delete()
+            } catch (e: EntityNotFoundException) {}
         }
     }
 

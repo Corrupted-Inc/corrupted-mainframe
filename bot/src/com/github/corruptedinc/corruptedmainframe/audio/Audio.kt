@@ -26,10 +26,11 @@ import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.entities.VoiceChannel
 import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.voice.GuildVoiceMoveEvent
-import net.dv8tion.jda.api.hooks.ListenerAdapter
+import org.jetbrains.exposed.dao.exceptions.EntityNotFoundException
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.nio.ByteBuffer
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 class Audio(val bot: Bot) {
@@ -37,11 +38,11 @@ class Audio(val bot: Bot) {
     val currentlyPlaying = mutableSetOf<AudioState>()
 
     companion object {
-        private const val BUSYWAITING_DELAY = 50L
         private const val MAX_CACHE_SIZE = 256L
         private const val MAX_METADATA_CACHE_SIZE = 1024L
         private const val CACHE_RET_MINUTES = 10L
         private const val METADATA_CACHE_RET_MINUTES = 60L
+        private const val LOAD_TIMEOUT = 20_000L
     }
 
     init {
@@ -91,42 +92,49 @@ class Audio(val bot: Bot) {
             val gotten = cache.getIfPresent(source)
             if (gotten != null) return gotten.map { it.makeClone() }
         }
-        var done = false
         var track: AudioPlaylist? = null
-        bot.audio.playerManager.loadItem(if (search) "ytsearch:$source" else source, object : AudioLoadResultHandler {
-            override fun loadFailed(exception: FriendlyException?) {
-                done = true
-                track = null
-            }
 
-            override fun trackLoaded(track1: AudioTrack?) {
-                done = true
-                track = BasicAudioPlaylist("playlist", listOf(track1), track1, false)
-                val info = track1?.info
-                if (info != null) metadataCache.put(source, info)
-            }
+        val job = bot.scope.launch { delay(LOAD_TIMEOUT) }
 
-            override fun noMatches() {
-                done = true
-                track = null
-            }
+        @Suppress("TooGenericExceptionCaught")
+        try {
+            bot.audio.playerManager.loadItem(
+                if (search) "ytsearch:$source" else source,
+                object : AudioLoadResultHandler {
+                    override fun loadFailed(exception: FriendlyException?) {
+                        job.cancel()
+                    }
 
-            override fun playlistLoaded(playlist: AudioPlaylist?) {
-                done = true
-                track = playlist
-            }
-        })
+                    override fun trackLoaded(track1: AudioTrack?) {
+                        track = BasicAudioPlaylist("playlist", listOf(track1), track1, false)
+                        val info = track1?.info
+                        if (info != null) metadataCache.put(source, info)
+                        job.cancel()
+                    }
 
-        // TODO make infinite delay job and cancel it when done
-        while (!done) {
-            delay(BUSYWAITING_DELAY)
+                    override fun noMatches() {
+                        track = null
+                        job.cancel()
+                    }
+
+                    override fun playlistLoaded(playlist: AudioPlaylist?) {
+                        track = playlist
+                        job.cancel()
+                    }
+                })
+
+            job.join()
+
+            var tracks = track?.tracks ?: emptyList()
+            if (search) {
+                tracks = listOfNotNull(tracks.firstOrNull())
+            }
+            cache.put(source, tracks)
+            return tracks
+        } catch (e: Exception) {
+            bot.log.error("Error loading track!\n${e.stackTraceToString()}")
+            return emptyList()
         }
-        var tracks = track?.tracks ?: emptyList()
-        if (search) {
-            tracks = listOfNotNull(tracks.firstOrNull())
-        }
-        cache.put(source, tracks)
-        return tracks
     }
 
     fun createState(channel: VoiceChannel, player: AudioPlayerSendHandler, playlist: MutableList<AudioTrack>) =
@@ -134,7 +142,11 @@ class Audio(val bot: Bot) {
 
     fun gracefulShutdown() {
         for (state in currentlyPlaying) {
-            state.updateDatabase()
+            try {
+                state.updateDatabase()
+            } catch (e: EntityNotFoundException) {
+                state.destroy()
+            }
         }
     }
 
@@ -153,6 +165,7 @@ class Audio(val bot: Bot) {
                 }
                 field = value
             }
+//        private var lastLeftAudio = channel.apply {  }
 
         constructor(channel: VoiceChannel, player: AudioPlayerSendHandler,
                     playlist: MutableList<AudioTrack>, position: Long) {

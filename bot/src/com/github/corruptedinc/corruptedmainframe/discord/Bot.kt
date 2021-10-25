@@ -6,14 +6,11 @@ import com.github.corruptedinc.corruptedmainframe.commands.Commands
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.commands.Leveling
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
-import com.github.corruptedinc.corruptedmainframe.plugin.Plugin
 import dev.minn.jda.ktx.injectKTX
 import dev.minn.jda.ktx.listener
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import net.dv8tion.jda.api.JDABuilder
+import net.dv8tion.jda.api.entities.Activity
 import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
@@ -23,12 +20,14 @@ import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent
 import net.dv8tion.jda.api.requests.GatewayIntent
 import net.dv8tion.jda.api.utils.cache.CacheFlag
+import org.apache.logging.log4j.Level
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.impl.Log4jLoggerFactory
 import java.time.Instant
 import java.util.*
 import kotlin.concurrent.schedule
+import kotlin.random.Random
 
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -48,12 +47,16 @@ class Bot(val config: Config) {
     val audio = Audio(this)
     val leveling = Leveling(this)
     val buttonListeners = mutableListOf<(ButtonClickEvent) -> Unit>()
-    val plugins = mutableListOf<Plugin>()
 
     companion object {
         /** Number of milliseconds between checking for expiring reminders and mutes. */
         private const val REMINDER_MUTE_RESOLUTION = 1000L
 //        private const val PLUGIN_MAIN_CLASS_NAME = "com.plugin.Plugin"
+        private const val GUILD_SCAN_INTERVAL = 3600_000L
+    }
+
+    fun updateActivity() {
+        jda.presence.activity = Activity.watching("${jda.shardManager?.guilds?.size ?: jda.guilds.size} guilds")
     }
 
     init {
@@ -67,85 +70,67 @@ class Bot(val config: Config) {
             log.info("Finished, exiting")
         })
 
-        // Disabled for the moment, it was causing issues
-//        val pluginsDir = File("plugins")
-//        // Create plugin dir if it doesn't exist
-//        pluginsDir.mkdir()
-//        val pluginFiles = pluginsDir.listFiles()
-//        for (plugin in pluginFiles ?: emptyArray()) {
-//            if (!plugin.name.endsWith(".jar")) continue
-//            @Suppress("TooGenericExceptionCaught")  // Anything can happen when loading a plugin
-//            try {
-//                val jar = JarFile(plugin)
-//                val e = jar.entries()
-//
-//                val urls = arrayOf(URL("jar:file:" + plugin.path + "!/"))
-//                val cl = URLClassLoader.newInstance(urls)
-//
-//                while (e.hasMoreElements()) {
-//                    val je: JarEntry = e.nextElement()
-//                    if (je.isDirectory || !je.name.endsWith(".class")) {
-//                        continue
-//                    }
-//                    // -6 because of .class
-//                    var className: String = je.name.removeSuffix(".class")
-//                    className = className.replace('/', '.')
-//                    val c: Class<*> = cl.loadClass(className)
-//
-//                    if (className == PLUGIN_MAIN_CLASS_NAME) {
-//                        val loaded = c.constructors.first().newInstance(this) as Plugin
-//                        plugins.add(loaded)
-//                        loaded.load()
-//                    }
-//                }
-//            } catch (e: Exception) {
-//                log.error("Error loading plugin '${plugin.nameWithoutExtension}'!")
-//                log.error(e.stackTraceToString())
-//            }
-//        }
+        // Every so often, double check if it's actually in those guilds
+        // Note: keeping track of this is stupid and should be removed
+        scope.launch {
+            delay(Random.nextLong(GUILD_SCAN_INTERVAL))
+            while (true) {
+                val guilds = (jda.shardManager?.guilds ?: jda.guilds).map { it.idLong }.toHashSet()
 
+                database.trnsctn {
+                    for (g in database.guilds()) {
+                        g.currentlyIn = g.discordId in guilds
+                    }
+                }
+                delay(GUILD_SCAN_INTERVAL)
+            }
+        }
 
         jda.listener<ReadyEvent> { event ->
-                log.info("Logged in as ${event.jda.selfUser.asTag}")
-                plugins.forEach { it.botStarted() }
+            log.info("Logged in as ${event.jda.selfUser.asTag}")
 
-                Timer().schedule(0, REMINDER_MUTE_RESOLUTION) {
-                    for (mute in database.moderationDB.expiringMutes()) {
-                        try {
-                            transaction(database.db) {
-                                val guild = jda.getGuildById(mute.guild.discordId)!!
-                                val member = guild.getMemberById(mute.user.discordId)!!
-                                val roles = database.moderationDB.roleIds(mute).map { guild.getRoleById(it) }
-                                guild.modifyMemberRoles(member, roles).queue({}, {})  // ignore errors
-                            }
-                        } finally {
-                            database.moderationDB.removeMute(mute)
+            updateActivity()
+
+            // TODO move to coroutine loop
+            Timer().schedule(0, REMINDER_MUTE_RESOLUTION) {
+                for (mute in database.moderationDB.expiringMutes()) {
+                    try {
+                        transaction(database.db) {
+                            val guild = jda.getGuildById(mute.guild.discordId)!!
+                            val member = guild.getMemberById(mute.user.discordId)!!
+                            val roles = database.moderationDB.roleIds(mute).map { guild.getRoleById(it) }
+                            guild.modifyMemberRoles(member, roles).queue({}, {})  // ignore errors
                         }
+                    } finally {
+                        database.moderationDB.removeMute(mute)
                     }
+                }
 
-                    database.trnsctn {
-                        for (reminder in database.expiringRemindersNoTransaction()) {
-                            try {
-                                // Make copies of relevant things for thread safety
-                                val text = reminder.text
-                                val channel = jda.getTextChannelById(reminder.channelId)
-                                jda.retrieveUserById(reminder.user.discordId).queue({ user ->
-                                    channel?.sendMessage(user.asMention)?.queue({}, {})  // ignore failure
-                                    channel?.sendMessageEmbeds(embed("Reminder", description = text))?.queue({}, {})
-                                }, {})
-                            } finally {
-                                reminder.delete()
-                            }
+                database.trnsctn {
+                    for (reminder in database.expiringRemindersNoTransaction()) {
+                        try {
+                            // Make copies of relevant things for thread safety
+                            val text = reminder.text
+                            val channel = jda.getTextChannelById(reminder.channelId)
+                            jda.retrieveUserById(reminder.user.discordId).queue({ user ->
+                                channel?.sendMessage(user.asMention)?.queue({}, {})  // ignore failure
+                                channel?.sendMessageEmbeds(embed("Reminder", description = text))?.queue({}, {})
+                            }, {})
+                        } finally {
+                            reminder.delete()
                         }
                     }
                 }
             }
+        }
 
         @Suppress("ReturnCount")
         jda.listener<MessageReactionAddEvent> { event ->
             if (event.user?.let { database.banned(it) } == true) return@listener
             val roleId = database.moderationDB.autoRole(event.messageIdLong, event.reactionEmote) ?: return@listener
             val role = event.guild.getRoleById(roleId) ?: return@listener
+
+            if (!event.reaction.retrieveUsers().complete().any { it.id == jda.selfUser.id }) return@listener
 
             // If they're muted they aren't eligible for reaction roles
             val end = event.user?.let { database.moderationDB.findMute(it, event.guild)?.end }
@@ -168,7 +153,8 @@ class Bot(val config: Config) {
         jda.listener<GuildJoinEvent> { event ->
             event.guild.loadMembers {
                 database.addLink(event.guild, it.user)
-            }
+            }.onSuccess {}
+            updateActivity()
         }
 
         jda.listener<GuildLeaveEvent> { event ->
@@ -176,7 +162,6 @@ class Bot(val config: Config) {
         }
     }
 
-    private val commands = Commands(this)
     init {
 //        @Suppress("TooGenericExceptionCaught")
 //        try {

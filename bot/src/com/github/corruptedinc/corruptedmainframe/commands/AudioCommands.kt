@@ -195,7 +195,6 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         val size = ceil((state.playlistCount - state.playlistPos) / QUEUE_VIEW_LENGTH.toDouble()).toLong()
         event.replyLambdaPaginator(size) {
             val range = (it * QUEUE_VIEW_LENGTH) until ((it + 1) * QUEUE_VIEW_LENGTH)
-            println("$it: $range")
             val songs = state.range(range).withIndex()
             val tracks = runBlocking {
                 songs.asFlow().mapNotNull { track ->
@@ -209,17 +208,6 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
             }
             embed("Queue (${it + 1} / $size)", content = fields)
         }
-
-//        event.replyEmbeds(
-//        embed(
-//            "Queue",
-//            content = state.range(state.playlistPos..(state.playlistPos + QUEUE_VIEW_LENGTH))
-//                .mapIndexedNotNull { i, it ->
-//                    val loaded = bot.audio.load(it).firstOrNull() ?: return@mapIndexedNotNull null
-//                    MessageEmbed.Field("#$i: ${loaded.info.title}", loaded.info.author, false)
-//                }
-//                .reversed()
-//        )).complete()
     }
 
     commands.register(CommandData("remove", "Remove an item from the queue")
@@ -308,5 +296,11 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
                 ?.setActionRow(*buttons(true))?.complete()
             bot.buttonListeners.remove(listener)
         }
+    }
+
+    commands.register(CommandData("seek", "Seeks to a time in the song.")
+        .addOption(OptionType.STRING, "time", "The time to seek to")
+    ) { event ->
+        val time = event.getOption("time")!!.asString
     }
 }

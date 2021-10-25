@@ -9,7 +9,7 @@ import java.io.File
 
 fun main() {
     BasicConfigurator.configure()  // Fixes log4j warning
-    Logger.getRootLogger().level = Level.INFO
+    Logger.getRootLogger().level = Level.ERROR
 
     val config = Config.load(File("config.json"))
     config ?: throw JsonParsingException("Failed to load configuration!")

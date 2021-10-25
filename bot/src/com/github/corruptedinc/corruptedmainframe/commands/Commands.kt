@@ -8,9 +8,11 @@ import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.github.corruptedinc.corruptedmainframe.utils.admin
 import com.github.corruptedinc.corruptedmainframe.utils.containsAny
 import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
+import dev.minn.jda.ktx.Message
 import dev.minn.jda.ktx.interactions.replyPaginator
 import dev.minn.jda.ktx.listener
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.EmbedBuilder
@@ -154,7 +156,8 @@ class Commands(val bot: Bot) {
             )).complete()
         }
 
-        register(CommandData("reactionrole", "description")
+        register(CommandData("reactionrole", "Reactions are specified with the format " +
+                "'\uD83D\uDC4D:rolename, \uD83D\uDCA5:otherrolename'.")
             .addOption(OptionType.STRING, "message", "Message link", true)
             .addOption(OptionType.STRING, "reactions", "Reactions", true)) { event ->
 
@@ -572,6 +575,71 @@ class Commands(val bot: Bot) {
                 user.timezone = zone
             }
             event.replyEmbeds(embed("Set your timezone to $zone")).complete()
+        }
+
+        register(CommandData("sql", "please don't use this, please I beg you")
+            .addOption(OptionType.STRING, "sql", "bad", false)) { event ->
+            // do not touch this
+            val isAdmin = bot.config.permaAdmins.contains(event.user.id)
+            if (!isAdmin) {
+                event.reply("no").complete()
+                return@register
+            }
+
+            val sql = event.getOption("sql")!!.asString
+
+            val output = bot.database.trnsctn {
+                exec(sql) { result ->
+                    val output = mutableListOf<MutableList<String>>()
+                    while (result.next()) {
+                        output.add(mutableListOf())
+                        for (c in 1..result.metaData.columnCount) {
+                            output.last().add(result.getObject(c).toString())
+                        }
+                    }
+                    output
+                }
+            }
+            val count = output?.first()?.size ?: run { event.reply("empty result").complete(); return@register }
+            val columnWidths = IntArray(count)
+
+            for (row in output) {
+                for ((index, item) in row.withIndex()) {
+                    if (item.length > columnWidths[index]) columnWidths[index] = item.length + 1
+                }
+            }
+
+            val outputTable = StringBuilder()
+            coroutineScope {
+                launch(Dispatchers.IO) {
+                    outputTable.append('+')
+                    outputTable.append("-".repeat(columnWidths.sum() + columnWidths.size - 1))
+                    outputTable.append('+')
+                    outputTable.append('\n')
+
+                    for (row in output) {
+                        outputTable.append('|')
+                        for ((index, item) in row.withIndex()) {
+                            outputTable.append(item.padStart(columnWidths[index], ' '))
+                            if (index + 1 in row.indices) outputTable.append('|')
+                        }
+                        outputTable.append('|')
+                        outputTable.append('\n')
+                    }
+                    outputTable.append('+')
+                    outputTable.append("-".repeat(columnWidths.sum() + columnWidths.size - 1))
+                    outputTable.append('+')
+                }
+            }.join()
+
+            val table = outputTable.toString()
+
+            @Suppress("MagicNumber")
+            val pages = table.chunked(1900)
+                .map { Message("```$it```") }
+
+            @Suppress("SpreadOperator")
+            event.replyPaginator(*pages.toTypedArray()).complete()
         }
 
 //        handler.register(
