@@ -15,9 +15,11 @@ import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
 import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
+import net.dv8tion.jda.api.events.interaction.SlashCommandEvent
 import net.dv8tion.jda.api.events.message.guild.GuildMessageReceivedEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent
+import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.requests.GatewayIntent
 import net.dv8tion.jda.api.utils.cache.CacheFlag
 import org.apache.logging.log4j.Level
@@ -38,6 +40,11 @@ class Bot(val config: Config) {
         GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS,
         GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES)
         .disableCache(CacheFlag.ACTIVITY, CacheFlag.EMOTE, CacheFlag.CLIENT_STATUS, CacheFlag.ONLINE_STATUS)
+        .addEventListeners(object : ListenerAdapter() {
+            override fun onSlashCommand(event: SlashCommandEvent) {
+                println(event)
+            }
+        })
         .injectKTX()
         .build()
     val scope = CoroutineScope(Dispatchers.Default)
@@ -51,7 +58,6 @@ class Bot(val config: Config) {
     companion object {
         /** Number of milliseconds between checking for expiring reminders and mutes. */
         private const val REMINDER_MUTE_RESOLUTION = 1000L
-//        private const val PLUGIN_MAIN_CLASS_NAME = "com.plugin.Plugin"
         private const val GUILD_SCAN_INTERVAL = 3600_000L
     }
 
@@ -60,10 +66,6 @@ class Bot(val config: Config) {
     }
 
     init {
-//        // Coroutines debug
-//        DebugProbes.enableCreationStackTraces = false
-//        DebugProbes.install()
-
         Runtime.getRuntime().addShutdownHook(Thread {
             log.info("Saving audio state to database...")
             audio.gracefulShutdown()
@@ -163,10 +165,6 @@ class Bot(val config: Config) {
     }
 
     init {
-//        @Suppress("TooGenericExceptionCaught")
-//        try {
-//            plugins.forEach { it.registerCommands(commands.handler) }
-//        } catch (e: Exception) { log.error(e.stackTraceToString()) }
 
         jda.listener<GuildMessageReceivedEvent> { event ->
             if (database.banned(event.author)) return@listener
@@ -180,5 +178,7 @@ class Bot(val config: Config) {
             if (database.banned(event.user)) return@listener
             buttonListeners.forEach { it(event) }
         }
+
+        Commands(this)
     }
 }
