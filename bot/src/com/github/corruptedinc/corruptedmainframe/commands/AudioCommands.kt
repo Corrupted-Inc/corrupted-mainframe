@@ -299,7 +299,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("seek", "Seeks to a time in the song.")
-        .addOption(OptionType.STRING, "time", "The time to seek to")
+        .addOption(OptionType.INTEGER, "time", "The time to seek to")
     ) { event ->
         val time = event.getOption("time")!!.asString
     }
