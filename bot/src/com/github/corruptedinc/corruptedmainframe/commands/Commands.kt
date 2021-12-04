@@ -91,13 +91,15 @@ class Commands(val bot: Bot) {
 
         private const val REMINDERS_PER_PAGE = 15
         private const val MAX_REMINDERS = 128
-
+// Changed both Invite links for analytical purpouses.
+// Kept both old Invite links that the bot used so people actually know what the shortened ones redirect to.
         fun adminInvite(botId: String) =
-            "https://discord.com/api/oauth2/authorize?client_id=$botId&permissions=8&scope=applications.commands%20bot"
+            "https://dsc.gg/corrupted-mainframe_admin"
+        // "https://discord.com/api/oauth2/authorize?client_id=$botId&permissions=8&scope=applications.commands%20bot"
 
         fun basicInvite(botId: String) =
-            "https://discord.com/api/oauth2/authorize?client_id=$botId" +
-                    "&permissions=271830080&scope=applications.commands%20bot"
+            "https://dsc.gg/corrupted-mainframe_basic"
+        // "https://discord.com/oauth2/authorize?client_id=838133145248989225&permissions=271830080&scope=applications.commands%20bot"
 
         val unauthorized = EmbedBuilder().setTitle("Insufficient Permissions")
             .setColor(ERROR_COLOR).build()
