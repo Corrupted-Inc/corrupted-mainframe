@@ -117,7 +117,7 @@ class ExposedDatabase(val db: Database) {
 
     fun users() = transaction(db) { UserM.all().toList() }
 
-    fun guilds() = transaction(db) { GuildM.find { GuildMs.currentlyIn eq true }.toList() }
+    fun guilds() = transaction(db) { GuildM.all().toList() }
 
     fun points(user: User, guild: Guild): Double = trnsctn {
         val u = user(user)

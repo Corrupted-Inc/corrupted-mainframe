@@ -6,6 +6,7 @@ import com.github.corruptedinc.corruptedmainframe.commands.Commands
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.commands.Leveling
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.injectKTX
 import dev.minn.jda.ktx.listener
 import kotlinx.coroutines.*
@@ -26,6 +27,7 @@ import org.apache.logging.log4j.Level
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.impl.Log4jLoggerFactory
+import java.lang.IllegalArgumentException
 import java.time.Instant
 import java.util.*
 import kotlin.concurrent.schedule
@@ -40,11 +42,6 @@ class Bot(val config: Config) {
         GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS,
         GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES)
         .disableCache(CacheFlag.ACTIVITY, CacheFlag.EMOTE, CacheFlag.CLIENT_STATUS, CacheFlag.ONLINE_STATUS)
-        .addEventListeners(object : ListenerAdapter() {
-            override fun onSlashCommand(event: SlashCommandEvent) {
-                println(event)
-            }
-        })
         .injectKTX()
         .build()
     val scope = CoroutineScope(Dispatchers.Default)
@@ -61,7 +58,7 @@ class Bot(val config: Config) {
         private const val GUILD_SCAN_INTERVAL = 3600_000L
     }
 
-    fun updateActivity() {
+    private fun updateActivity() {
         jda.presence.activity = Activity.watching("${jda.shardManager?.guilds?.size ?: jda.guilds.size} guilds")
     }
 
@@ -72,56 +69,61 @@ class Bot(val config: Config) {
             log.info("Finished, exiting")
         })
 
-        // Every so often, double check if it's actually in those guilds
-        // Note: keeping track of this is stupid and should be removed
-        scope.launch {
-            delay(Random.nextLong(GUILD_SCAN_INTERVAL))
-            while (true) {
-                val guilds = (jda.shardManager?.guilds ?: jda.guilds).map { it.idLong }.toHashSet()
-
-                database.trnsctn {
-                    for (g in database.guilds()) {
-                        g.currentlyIn = g.discordId in guilds
-                    }
-                }
-                delay(GUILD_SCAN_INTERVAL)
-            }
-        }
-
         jda.listener<ReadyEvent> { event ->
             log.info("Logged in as ${event.jda.selfUser.asTag}")
 
             updateActivity()
 
-            // TODO move to coroutine loop
-            Timer().schedule(0, REMINDER_MUTE_RESOLUTION) {
-                for (mute in database.moderationDB.expiringMutes()) {
-                    try {
-                        transaction(database.db) {
-                            val guild = jda.getGuildById(mute.guild.discordId)!!
-                            val member = guild.getMemberById(mute.user.discordId)!!
-                            val roles = database.moderationDB.roleIds(mute).map { guild.getRoleById(it) }
-                            guild.modifyMemberRoles(member, roles).queue({}, {})  // ignore errors
-                        }
-                    } finally {
-                        database.moderationDB.removeMute(mute)
-                    }
-                }
-
-                database.trnsctn {
-                    for (reminder in database.expiringRemindersNoTransaction()) {
+            scope.launch {
+                while (true) {
+                    delay(REMINDER_MUTE_RESOLUTION)
+                    for (mute in database.moderationDB.expiringMutes()) {
                         try {
-                            // Make copies of relevant things for thread safety
-                            val text = reminder.text
-                            val channel = jda.getTextChannelById(reminder.channelId)
-                            jda.retrieveUserById(reminder.user.discordId).queue({ user ->
-                                channel?.sendMessage(user.asMention)?.queue({}, {})  // ignore failure
-                                channel?.sendMessageEmbeds(embed("Reminder", description = text))?.queue({}, {})
-                            }, {})
+                            database.trnsctn {  // todo why is the expensive part in the transaction
+                                val guild = jda.getGuildById(mute.guild.discordId)!!
+                                val member = guild.getMemberById(mute.user.discordId)!!
+                                val roles = database.moderationDB.roleIds(mute).map { guild.getRoleById(it) }
+                                guild.modifyMemberRoles(member, roles).queue({}, {})  // ignore errors
+                            }
                         } finally {
+                            database.moderationDB.removeMute(mute)
+                        }
+                    }
+
+                    database.trnsctn {
+                        for (reminder in database.expiringRemindersNoTransaction()) {
+                            // Make copies of relevant things for thread safety
+                            val text = reminder.text + ""
+                            val channelId = reminder.channelId
+                            val userId = reminder.user.discordId
+                            launch {
+                                val channel = jda.getTextChannelById(channelId)
+                                val user = jda.getUserById(userId)
+                                if (user != null) {
+                                    channel?.sendMessage(user.asMention)?.await()
+                                    channel?.sendMessageEmbeds(embed("Reminder", description = text))?.await()
+                                } else {
+                                    log.error("Couldn't find user with id '$userId'!")
+                                }
+                            }
                             reminder.delete()
                         }
                     }
+                }
+            }
+
+            // Every so often, double check if it's actually in those guilds
+            // Note: keeping track of this is stupid and should be removed
+            scope.launch {
+                while (true) {
+                    val guilds = (jda.shardManager?.guildCache ?: jda.guildCache).map { it.idLong }.toHashSet()
+
+                    database.trnsctn {
+                        for (g in database.guilds()) {
+                            g.currentlyIn = g.discordId in guilds
+                        }
+                    }
+                    delay(GUILD_SCAN_INTERVAL)
                 }
             }
         }
