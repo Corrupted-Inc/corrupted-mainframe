@@ -16,27 +16,20 @@ import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
 import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
-import net.dv8tion.jda.api.events.interaction.SlashCommandEvent
 import net.dv8tion.jda.api.events.message.guild.GuildMessageReceivedEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent
-import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.requests.GatewayIntent
 import net.dv8tion.jda.api.utils.cache.CacheFlag
-import org.apache.logging.log4j.Level
 import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.transactions.transaction
-import org.slf4j.impl.Log4jLoggerFactory
-import java.lang.IllegalArgumentException
+import org.slf4j.impl.SimpleLoggerFactory
 import java.time.Instant
-import java.util.*
-import kotlin.concurrent.schedule
-import kotlin.random.Random
 
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class Bot(val config: Config) {
-    val log = Log4jLoggerFactory().getLogger("aaaaaaa")
+    //val log = Log4jLoggerFactory().getLogger("aaaaaaa")
+    val log = SimpleLoggerFactory().getLogger("aaaaaaa")
     val startTime: Instant = Instant.now()
     val jda = JDABuilder.create(config.token,
         GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS,
