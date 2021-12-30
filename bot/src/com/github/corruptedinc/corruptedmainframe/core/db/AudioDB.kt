@@ -147,7 +147,7 @@ class AudioDB(val database: ExposedDatabase) {
 
     fun addPlaylistItems(state: MusicState, tracks: List<AudioTrack>) {
         database.trnsctn {
-            var pos = state.items.maxOf { it.position } + 1
+            var pos = (state.items.maxOfOrNull { it.position } ?: 0) + 1
             for (t in tracks) {
                 PlaylistEntry.new {
                     this.state = state

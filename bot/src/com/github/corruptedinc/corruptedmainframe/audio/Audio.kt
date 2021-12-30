@@ -55,7 +55,7 @@ class Audio(val bot: Bot) {
             }
         }
 
-        bot.jda.listener<GuildVoiceMoveEvent> { event ->
+        bot.jda.listener<GuildVoiceMoveEvent> { event ->  // janky and possibly broken
             if (event.entity.user == bot.jda.selfUser) {
                 val state = currentlyPlaying.find { it.channelId == event.channelLeft.idLong }
                 if (state == null) {
@@ -208,6 +208,8 @@ class Audio(val bot: Bot) {
                     override fun onUserSpeaking(user: User, speaking: Boolean) {}
                 }
             } catch (e: Exception) {
+                bot.log.error("Exception thrown while attempting to resume music in ${channel?.guild?.name}!\n" +
+                        e.stackTraceToString())
                 destroy()
             }
 
@@ -215,6 +217,11 @@ class Audio(val bot: Bot) {
             playlistCache = transaction(bot.database.db) { databaseState.items.map { it.audioSource } }
             this.databaseState = databaseState
             currentlyPlaying.add(this)
+            if (channel?.guild == null) {
+                bot.log.warn("Guild or channel is null, not resuming")
+                destroy()
+                return
+            }
             bot.log.info("Resuming music in ${channel?.guild?.name}")
         }
 

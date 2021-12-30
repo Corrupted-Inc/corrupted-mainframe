@@ -556,7 +556,7 @@ class Commands(val bot: Bot) {
             if (!isAdmin) throw CommandException("You need to be admin to use this command!")
 
 //            bot.audio.gracefulShutdown()  // handled by shutdown hook in Bot.kt
-            bot.log.error("${event.user.asTag} (id ${event.user.id}) ran /cleanshutdown")
+            bot.log.error("${event.user.asTag} (id ${event.user.id}) ran /restart")
             event.replyEmbeds(embed("Shutting down...")).complete()
             exitProcess(0)
         }
@@ -600,7 +600,7 @@ class Commands(val bot: Bot) {
                     output
                 }
             }
-            val count = output?.first()?.size ?: run { event.reply("empty result").complete(); return@register }
+            val count = output?.firstOrNull()?.size ?: run { event.reply("empty result").complete(); return@register }
             val columnWidths = IntArray(count)
 
             for (row in output) {
@@ -636,7 +636,7 @@ class Commands(val bot: Bot) {
 
             @Suppress("MagicNumber")
             val pages = table.chunked(1900)
-                .map { Message("```$it```") }
+                .map { Message("```\n$it```") }
 
             @Suppress("SpreadOperator")
             event.replyPaginator(*pages.toTypedArray()).complete()

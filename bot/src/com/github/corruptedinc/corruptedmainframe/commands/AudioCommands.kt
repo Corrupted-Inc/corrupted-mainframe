@@ -36,8 +36,9 @@ private const val MAX_VOLUME = 200
 @Suppress("LongMethod", "ComplexMethod", "ThrowsCount")  // why yes, it is a long method
 fun registerAudioCommands(bot: Bot, commands: Commands) {
 
-    fun nothingPlaying(guild: Guild?): Nothing {
-        guild?.audioManager?.closeAudioConnection()
+    fun nothingPlaying(member: Member?): Nothing {
+        if (member?.guild?.audioManager?.connectedChannel?.members?.contains(member) == true)
+            member.guild.audioManager.closeAudioConnection()
         throw CommandException("Nothing playing")
     }
 
@@ -119,7 +120,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("pause", "Pause the current song")) { event ->
-        val state = state(event.member) ?: nothingPlaying(event.guild)
+        val state = state(event.member) ?: nothingPlaying(event.member)
         validateInChannel(event.member, state)
 
         state.paused = true
@@ -127,7 +128,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("resume", "Unpause the current song")) { event ->
-        val state = state(event.member) ?: nothingPlaying(event.guild)
+        val state = state(event.member) ?: nothingPlaying(event.member)
         validateInChannel(event.member, state)
 
         state.paused = false
@@ -136,7 +137,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
 
     commands.register(CommandData("volume", "Set the volume")
         .addOption(OptionType.INTEGER, "percentage", "The volume percentage", true)) { event ->
-            val state = state(event.member) ?: nothingPlaying(event.guild)
+            val state = state(event.member) ?: nothingPlaying(event.member)
             validateInChannel(event.member, state)
 
             val vol = event.getOption("percentage")!!.asLong.toInt().coerceIn(0, MAX_VOLUME)
@@ -146,7 +147,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         }
 
     commands.register(CommandData("stop", "Stop playing")) { event ->
-        val state = state(event.member) ?: nothingPlaying(event.guild)
+        val state = state(event.member) ?: nothingPlaying(event.member)
         validateInChannel(event.member, state)
         state.destroy()
 
@@ -154,7 +155,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("skip", "Skip to the next song")) { event ->
-        val state = state(event.member) ?: nothingPlaying(event.guild)
+        val state = state(event.member) ?: nothingPlaying(event.member)
 
         validateInChannel(event.member, state)
 
@@ -166,7 +167,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("previous", "Skip to the previous song")) { event ->
-        val state = state(event.member) ?: nothingPlaying(event.guild)
+        val state = state(event.member) ?: nothingPlaying(event.member)
 
         validateInChannel(event.member, state)
 
@@ -178,7 +179,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("shuffle", "Shuffle the playlist")) { event ->
-        val state = state(event.member) ?: nothingPlaying(event.guild)
+        val state = state(event.member) ?: nothingPlaying(event.member)
 
         validateInChannel(event.member, state)
 
@@ -188,7 +189,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("queue", "Show the queue")) { event ->
-        val state = state(event.member) ?: nothingPlaying(event.guild)
+        val state = state(event.member) ?: nothingPlaying(event.member)
 
         validateInChannel(event.member, state)
 
@@ -212,7 +213,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
 
     commands.register(CommandData("remove", "Remove an item from the queue")
         .addOption(OptionType.INTEGER, "index", "The number of the item to remove", true)) { event ->
-        val state = state(event.member) ?: nothingPlaying(event.guild)
+        val state = state(event.member) ?: nothingPlaying(event.member)
 
         validateInChannel(event.member, state)
 
@@ -233,7 +234,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     commands.register(CommandData("fastforward", "Skip forward in the current song")
         .addOption(OptionType.INTEGER, "seconds", "The number of seconds to skip", true)) { event ->
 
-        val state = state(event.member) ?: nothingPlaying(event.guild)
+        val state = state(event.member) ?: nothingPlaying(event.member)
         validateInChannel(event.member, state)
 
         val seconds = event.getOption("seconds")!!.asLong.coerceAtLeast(0)
@@ -245,7 +246,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("playing", "Show what is currently playing")) { event ->
-        val state = state(event.member) ?: nothingPlaying(event.guild)
+        val state = state(event.member) ?: nothingPlaying(event.member)
         val length = BAR_LENGTH
         val timeFraction = (state.progress ?: 0) / (state.currentlyPlayingTrack?.duration?.toDouble() ?: 1.0)
         val dashCount = floor(timeFraction * length).toInt()
@@ -299,8 +300,19 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
     }
 
     commands.register(CommandData("seek", "Seeks to a time in the song.")
-        .addOption(OptionType.INTEGER, "time", "The time to seek to")
+        .addOption(OptionType.STRING, "time", "The time to seek to")
     ) { event ->
-        val time = event.getOption("time")!!.asString
+        val state = state(event.member) ?: nothingPlaying(event.member)
+        var timeStr = event.getOption("time")!!.asString
+        val seconds = timeStr.substringAfterLast(':').toDouble()
+        timeStr = timeStr.substringBeforeLast(':', "")
+        val minutes = timeStr.substringAfterLast(':').toUIntOrNull() ?: 0U
+        timeStr = timeStr.substringBeforeLast(':', "")
+        val hours = timeStr.substringAfterLast(':').toUIntOrNull() ?: 0U
+
+        val totalMilliseconds = (seconds * 1000).toLong() + (minutes.toInt() * 60_000).toLong() + (hours.toInt() * 3600_000).toLong()
+
+        state.progress = totalMilliseconds
+        event.replyEmbeds(embed("Seeked to ${totalMilliseconds / 1000} seconds"))
     }
 }
