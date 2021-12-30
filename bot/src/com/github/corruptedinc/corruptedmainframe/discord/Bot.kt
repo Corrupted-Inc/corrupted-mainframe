@@ -28,9 +28,8 @@ import java.time.Instant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class Bot(val config: Config) {
-    //val log = Log4jLoggerFactory().getLogger("aaaaaaa")
-    val log = SimpleLoggerFactory().getLogger("aaaaaaa")
-    val startTime: Instant = Instant.now()
+    val log = SimpleLoggerFactory().getLogger("aaaaaaa") // Creates a log.
+    val startTime: Instant = Instant.now() // Sets the start time of the bot.
     val jda = JDABuilder.create(config.token,
         GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS,
         GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES)
@@ -40,7 +39,7 @@ class Bot(val config: Config) {
     val scope = CoroutineScope(Dispatchers.Default)
     val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver).apply {
         useNestedTransactions = true
-    })
+    }) // Creates the database for storing the guilds that the bot is currently in.
     val audio = Audio(this)
     val leveling = Leveling(this)
     val buttonListeners = mutableListOf<(ButtonClickEvent) -> Unit>()
