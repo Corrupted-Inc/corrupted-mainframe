@@ -8,6 +8,7 @@ import org.apache.log4j.Logger
 import java.io.File
 
 fun main() {
+    // Test
     BasicConfigurator.configure()  // Fixes log4j warning
     Logger.getRootLogger().level = Level.ERROR
 
