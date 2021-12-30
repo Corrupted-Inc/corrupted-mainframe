@@ -35,11 +35,11 @@ class Bot(val config: Config) {
         GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES)
         .disableCache(CacheFlag.ACTIVITY, CacheFlag.EMOTE, CacheFlag.CLIENT_STATUS, CacheFlag.ONLINE_STATUS)
         .injectKTX()
-        .build()
+        .build() // The actual API for discord.
     val scope = CoroutineScope(Dispatchers.Default)
     val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver).apply {
         useNestedTransactions = true
-    }) // Creates the database for storing the guilds that the bot is currently in.
+    }) // Creates a database. Which is exposed. Now look away.
     val audio = Audio(this)
     val leveling = Leveling(this)
     val buttonListeners = mutableListOf<(ButtonClickEvent) -> Unit>()
