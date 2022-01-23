@@ -61,7 +61,7 @@ class LambdaPaginator internal constructor(private val nonce: String, private va
                 val p = page(index)
                 event.editMessageEmbeds(p)
                     .setActionRows(controls)
-                    .queue(null, ErrorHandler().handle(ErrorResponse.UNKNOWN_MESSAGE) { unregister(event.jda) })
+                    .queue(null, ErrorHandler().handle(ErrorResponse.UNKNOWN_MESSAGE) { unregister((event as GenericEvent).jda) })
             }
             "next" -> {
                 index += 1
@@ -69,17 +69,12 @@ class LambdaPaginator internal constructor(private val nonce: String, private va
                 val p = page(index)
                 event.editMessageEmbeds(p)
                     .setActionRows(controls)
-                    .queue(null, ErrorHandler().handle(ErrorResponse.UNKNOWN_MESSAGE) { unregister(event.jda) })
+                    .queue(null, ErrorHandler().handle(ErrorResponse.UNKNOWN_MESSAGE) { unregister((event as GenericEvent).jda) })
             }
             "delete" -> {
-                unregister(event.jda)
+                unregister((event as GenericEvent).jda)
                 event.deferEdit().queue()
-                if (event.message == null)
-                    event.hook.editOriginalEmbeds(page(index))
-                        .setActionRows(emptyList())
-                        .queue()
-                else
-                    event.hook.deleteOriginal().queue(null, ErrorHandler().ignore(ErrorResponse.UNKNOWN_MESSAGE))
+                event.hook.deleteOriginal().queue(null, ErrorHandler().ignore(ErrorResponse.UNKNOWN_MESSAGE))
             }
         }
     }

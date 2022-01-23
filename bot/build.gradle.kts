@@ -15,28 +15,25 @@ repositories {
 
 dependencies {
     testImplementation(kotlin("test-junit5"))
-    testImplementation("org.junit.jupiter:junit-jupiter-api:5.6.0")
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.6.0")
-    implementation("net.dv8tion:JDA:4.3.0_280")
-    implementation("com.github.minndevelopment:jda-ktx:ea0a1b23b7efb571aabd580c2e8fcc85ae437789")
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.8.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.8.2")
+    implementation("net.dv8tion:JDA:5.0.0-alpha.4")
+    implementation("com.github.minndevelopment:jda-ktx:0.8.3-alpha.2")
     implementation(group = "com.beust", name = "klaxon", version = "5.5")
     implementation(group = "org.xerial", name = "sqlite-jdbc", version = "3.34.0")
     implementation(group = "org.postgresql", name = "postgresql", version = "42.2.16")
-    implementation("org.apache.logging.log4j:log4j-core:2.15.0")
-    implementation("org.apache.logging.log4j:log4j:2.15.0")
-    //implementation(group = "org.slf4j", name = "slf4j-log4j12", version = "1.7.30")
     implementation(group = "org.slf4j", name = "slf4j-simple", version = "1.7.30")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.5.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.6.0")
     implementation(group = "org.jetbrains.exposed", name = "exposed-dao", version = "0.33.1")
     implementation(group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "0.33.1")
     implementation(group = "org.jetbrains.exposed", name = "exposed-java-time", version = "0.33.1")
     implementation("com.sedmelluq:lavaplayer:1.3.73")
     runtimeOnly("com.sedmelluq:lavaplayer-common:1.0.6")
-    implementation("com.google.guava:guava:30.1.1-jre")
+    implementation("com.google.guava:guava:31.0.1-jre")
     implementation("ch.obermuhlner:kotlin-big-math:2.3.0")
     implementation("ch.obermuhlner:big-math:2.3.0")
     implementation("com.jagrosh:jda-utilities:3.0.5")
-    implementation("org.ocpsoft.prettytime:prettytime-nlp:5.0.1.Final")
+    implementation("org.ocpsoft.prettytime:prettytime-nlp:5.0.2.Final")
 }
 
 detekt {
@@ -94,5 +91,6 @@ tasks {
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
     kotlinOptions {
         freeCompilerArgs = freeCompilerArgs + "-Xopt-in=kotlin.RequiresOptIn"
+        freeCompilerArgs = freeCompilerArgs + "-opt-in=kotlin.ExperimentalStdlibApi"
     }
 }

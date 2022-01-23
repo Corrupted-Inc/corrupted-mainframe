@@ -25,7 +25,8 @@ class ExposedDatabase(val db: Database) {
                 *moderationDB.tables(),
                 *audioDB.tables(),
                 Points,
-                Reminders
+                Reminders,
+                StarredMessages
             )
         }
     }
@@ -33,19 +34,29 @@ class ExposedDatabase(val db: Database) {
     companion object {
         const val VARCHAR_MAX_LENGTH = 255  // beginning to hate code analysis
         private const val MAX_PREFIX_LENGTH = 64
+        const val STARBOARD_THRESHOLD_DEFAULT = 7
     }
 
     object GuildMs : LongIdTable(name = "guilds") {
         val discordId = long("discord_id").index(isUnique = true)
         val prefix = varchar("prefix", MAX_PREFIX_LENGTH)
         val currentlyIn = bool("currently_in").default(true)
+        val starboardChannel = long("starboard_channel").nullable()
+        val starboardThreshold = integer("starboard_threshold").default(STARBOARD_THRESHOLD_DEFAULT)
+        val starboardReaction = varchar("starboard_reaction", VARCHAR_MAX_LENGTH).nullable()
+        val levelsEnabled = bool("levels_enabled").default(true)
     }
 
     class GuildM(id: EntityID<Long>) : LongEntity(id) {
         companion object : LongEntityClass<GuildM>(GuildMs)
-        var discordId   by GuildMs.discordId
-        var prefix      by GuildMs.prefix
-        var currentlyIn by GuildMs.currentlyIn
+        var discordId          by GuildMs.discordId
+        var prefix             by GuildMs.prefix
+        var currentlyIn        by GuildMs.currentlyIn
+        var starboardChannel   by GuildMs.starboardChannel
+        var starboardThreshold by GuildMs.starboardThreshold
+        var starboardReaction  by GuildMs.starboardReaction
+        var levelsEnabled      by GuildMs.levelsEnabled
+        val starredMessages    by StarredMessage.referrersOn(StarredMessages.guild)
     }
 
     object UserMs : LongIdTable(name = "users") {
@@ -70,7 +81,7 @@ class ExposedDatabase(val db: Database) {
         val user   = reference("user", UserMs)
         val guild  = reference("guild", GuildMs)
         val pnts = double("points")
-        val popups = bool("popups").default(false)
+        val popups = bool("popups").default(true)
     }
 
     class Point(id: EntityID<Long>) : LongEntity(id) {
@@ -103,6 +114,17 @@ class ExposedDatabase(val db: Database) {
         var channelId by Reminders.channelId
         var time      by Reminders.time
         var text      by Reminders.text
+    }
+
+    object StarredMessages : LongIdTable(name = "starred_messages") {
+        val guild = reference("guild", GuildMs)
+        val messageID = long("message_id")
+    }
+
+    class StarredMessage(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<StarredMessage>(StarredMessages)
+        var guild     by StarredMessages.guild
+        var messageID by StarredMessages.messageID
     }
 
     fun user(user: User) = transaction(db) { UserM.find {
@@ -167,9 +189,11 @@ class ExposedDatabase(val db: Database) {
                 this.guild = g
                 this.user = u
                 this.points = 0.0
+                this.popups = true
             }
 
             found.points += points
+            found.points = found.points.coerceAtLeast(0.0)
 
             found.points
         }

@@ -16,7 +16,7 @@ import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
 import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
-import net.dv8tion.jda.api.events.message.guild.GuildMessageReceivedEvent
+import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent
 import net.dv8tion.jda.api.requests.GatewayIntent
@@ -28,13 +28,12 @@ import java.time.Instant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class Bot(val config: Config) {
-    //val log = Log4jLoggerFactory().getLogger("aaaaaaa")
     val log = SimpleLoggerFactory().getLogger("aaaaaaa")
     val startTime: Instant = Instant.now()
     val jda = JDABuilder.create(config.token,
         GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS,
-        GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES)
-        .disableCache(CacheFlag.ACTIVITY, CacheFlag.EMOTE, CacheFlag.CLIENT_STATUS, CacheFlag.ONLINE_STATUS)
+        GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES, GatewayIntent.GUILD_EMOJIS)
+        .disableCache(CacheFlag.ACTIVITY, CacheFlag.CLIENT_STATUS, CacheFlag.ONLINE_STATUS)
         .injectKTX()
         .build()
     val scope = CoroutineScope(Dispatchers.Default)
@@ -44,6 +43,7 @@ class Bot(val config: Config) {
     val audio = Audio(this)
     val leveling = Leveling(this)
     val buttonListeners = mutableListOf<(ButtonClickEvent) -> Unit>()
+    val starboard = Starboard(this)
 
     companion object {
         /** Number of milliseconds between checking for expiring reminders and mutes. */
@@ -160,12 +160,12 @@ class Bot(val config: Config) {
     }
 
     init {
-
-        jda.listener<GuildMessageReceivedEvent> { event ->
+        jda.listener<MessageReceivedEvent> { event ->
+            if (!event.isFromGuild) return@listener
             if (database.banned(event.author)) return@listener
             if (event.author == jda.selfUser) return@listener
             scope.launch {
-                leveling.addPoints(event.author, Leveling.POINTS_PER_MESSAGE, event.channel)
+                leveling.addPoints(event.author, Leveling.POINTS_PER_MESSAGE, event.textChannel)
             }
         }
 

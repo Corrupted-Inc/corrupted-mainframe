@@ -80,7 +80,7 @@ class Audio(val bot: Bot) {
             override fun load(key: String): AudioTrackInfo {
                 return runBlocking { load(key, search = false) }.first().info
             }
-        })
+        })  // TODO switch to loadingcache and remove janky double putting
 
     fun metadata(source: String?): AudioTrackInfo? = if (source == null) null else metadataCache[source]
 

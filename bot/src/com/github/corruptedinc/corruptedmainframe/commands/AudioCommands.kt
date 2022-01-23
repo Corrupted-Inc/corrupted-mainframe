@@ -87,7 +87,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         if (t.isEmpty()) throw CommandException("Failed to load '$source'")
 
         val player = Audio.AudioPlayerSendHandler(bot.audio.playerManager.createPlayer())
-        val state = bot.audio.createState(channel, player, t)
+        val state = bot.audio.createState(channel as VoiceChannel, player, t)
         validateInChannel(event.member, state)
 
         player.audioPlayer.addListener(object : AudioEventAdapter() {
