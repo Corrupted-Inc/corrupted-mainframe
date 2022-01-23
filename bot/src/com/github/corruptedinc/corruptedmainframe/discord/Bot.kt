@@ -13,6 +13,7 @@ import dev.minn.jda.ktx.listener
 import kotlinx.coroutines.*
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.entities.Activity
+import net.dv8tion.jda.api.entities.ChannelType
 import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
@@ -52,8 +53,8 @@ class Bot(val config: Config) {
     private val plugins = PluginLoader(File("plugins"), this)
 
     companion object {
-        /** Number of milliseconds between checking for expiring reminders and mutes. */
-        private const val REMINDER_MUTE_RESOLUTION = 1000L
+        /** Number of milliseconds between checking for expiring reminders. */
+        private const val REMINDER_RESOLUTION = 1000L
         private const val GUILD_SCAN_INTERVAL = 3600_000L
     }
 
@@ -75,19 +76,7 @@ class Bot(val config: Config) {
 
             scope.launch {
                 while (true) {
-                    delay(REMINDER_MUTE_RESOLUTION)
-                    for (mute in database.moderationDB.expiringMutes()) {
-                        try {
-                            database.trnsctn {  // todo why is the expensive part in the transaction
-                                val guild = jda.getGuildById(mute.guild.discordId)!!
-                                val member = guild.getMemberById(mute.user.discordId)!!
-                                val roles = database.moderationDB.roleIds(mute).map { guild.getRoleById(it) }
-                                guild.modifyMemberRoles(member, roles).queue({}, {})  // ignore errors
-                            }
-                        } finally {
-                            database.moderationDB.removeMute(mute)
-                        }
-                    }
+                    delay(REMINDER_RESOLUTION)
 
                     database.trnsctn {
                         for (reminder in database.expiringRemindersNoTransaction()) {
@@ -135,13 +124,6 @@ class Bot(val config: Config) {
 
             if (!event.reaction.retrieveUsers().complete().any { it.id == jda.selfUser.id }) return@listener
 
-            // If they're muted they aren't eligible for reaction roles
-            val end = event.user?.let { database.moderationDB.findMute(it, event.guild)?.end }
-            if (end?.let { Instant.ofEpochSecond(it).isAfter(Instant.now()) } == true) {
-                event.reaction.removeReaction(event.user!!).queue()
-                return@listener
-            }
-
             event.guild.addRoleToMember(event.userId, role).queue()
         }
 
@@ -167,7 +149,7 @@ class Bot(val config: Config) {
 
     init {
         jda.listener<MessageReceivedEvent> { event ->
-            if (!event.isFromGuild) return@listener
+            if (!event.isFromGuild || event.channelType != ChannelType.TEXT) return@listener
             if (database.banned(event.author)) return@listener
             if (event.author == jda.selfUser) return@listener
             scope.launch {

@@ -9,35 +9,7 @@ import org.jetbrains.exposed.sql.and
 import java.time.Instant
 
 class ModerationDB(private val database: ExposedDatabase) {
-    fun tables() = arrayOf(Mutes, MutedUserRoles, AutoRoleMessages, AutoRoles)
-
-    object Mutes : LongIdTable(name = "mutes") {
-        val user = reference("user", ExposedDatabase.UserMs)
-        val start = long("start")
-        val end = long("end")
-        val guild = reference("guild", ExposedDatabase.GuildMs)
-    }
-
-    class Mute(id: EntityID<Long>) : LongEntity(id) {
-        companion object : LongEntityClass<Mute>(Mutes)
-
-        var user  by ExposedDatabase.UserM referencedOn Mutes.user
-        var start by Mutes.start
-        var end   by Mutes.end
-        var guild by ExposedDatabase.GuildM referencedOn Mutes.guild
-        val roles by MutedUserRole referrersOn MutedUserRoles.mute
-    }
-
-    object MutedUserRoles : LongIdTable(name = "muted_user_roles") {
-        val mute = reference("mute", Mutes)
-        val role = long("role")
-    }
-
-    class MutedUserRole(id: EntityID<Long>) : LongEntity(id) {
-        companion object : LongEntityClass<MutedUserRole>(MutedUserRoles)
-        var mute by Mute referencedOn MutedUserRoles.mute
-        var role by MutedUserRoles.role
-    }
+    fun tables() = arrayOf(AutoRoleMessages, AutoRoles)
 
     object AutoRoleMessages : LongIdTable(name = "auto_role_messages") {
         val guild = reference("guild", ExposedDatabase.GuildMs)
@@ -62,61 +34,6 @@ class ModerationDB(private val database: ExposedDatabase) {
         var message by AutoRoleMessage referencedOn AutoRoles.message
         var emote   by AutoRoles.emote
         var role    by AutoRoles.role
-    }
-
-    fun addMute(user: User, roles: List<Role>, endTime: Instant, guild: Guild) {
-        val userm = database.user(user)
-        val guildm = database.guild(guild)
-
-        val previous = mutes(user, guild)
-        database.trnsctn {
-            for (mute in previous) {
-                removeMute(mute)
-            }
-        }
-
-        val mute = database.trnsctn { Mute.new {
-            start = Instant.now().epochSecond; end = endTime.epochSecond; this.user = userm; this.guild = guildm
-        } }
-
-        database.trnsctn {
-            for (role in roles) {
-                MutedUserRole.new { this.mute = mute; this.role = role.idLong }
-            }
-        }
-    }
-
-    fun mutes() = database.trnsctn { Mute.all() }.toList()
-
-    fun expiringMutes(): List<Mute> {
-        val now = Instant.now().epochSecond
-        return database.trnsctn {
-            Mute.find { Mutes.end lessEq now }.toList()
-        }
-    }
-
-    fun removeMute(mute: Mute) {
-        database.trnsctn {
-            roles(mute).map { it.delete() }
-            mute.delete()
-        }
-    }
-
-    fun roles(mute: Mute): List<MutedUserRole> {
-        return database.trnsctn { mute.roles.toList() }
-    }
-
-    //todo transaction?
-    fun roleIds(mute: Mute) = mute.roles.map { it.role }
-
-    private fun mutes(user: User, guild: Guild): List<Mute> {
-        val userm = database.user(user)
-        val guildm = database.guild(guild)
-        return database.trnsctn { Mute.find { (Mutes.user eq userm.id) and (Mutes.guild eq guildm.id) }.toList() }
-    }
-
-    fun findMute(user: User, guild: Guild): Mute? {
-        return mutes(user, guild).firstOrNull()
     }
 
     fun autoRoleMessages(guild: Guild): List<AutoRoleMessage> {
