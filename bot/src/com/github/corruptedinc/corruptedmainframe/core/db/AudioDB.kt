@@ -1,5 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.core.db
 
+import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.VoiceChannel
@@ -10,7 +11,7 @@ import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.and
 
-class AudioDB(val database: ExposedDatabase) {
+class AudioDB(val database: ExposedDatabase, val bot: Bot) {
     fun tables() = arrayOf(PlaylistEntries, MusicStates)
 
     object PlaylistEntries : LongIdTable(name = "playlist_entries") {
@@ -68,7 +69,9 @@ class AudioDB(val database: ExposedDatabase) {
                     item.delete()
                 }
                 state.delete()
-            } catch (e: EntityNotFoundException) {}
+            } catch (e: EntityNotFoundException) {
+                bot.log.error(e.stackTraceToString())
+            }
         }
     }
 

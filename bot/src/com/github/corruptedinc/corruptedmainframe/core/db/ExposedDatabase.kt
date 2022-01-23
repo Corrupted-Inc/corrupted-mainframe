@@ -1,5 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.core.db
 
+import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import net.dv8tion.jda.api.entities.*
 import org.jetbrains.exposed.dao.LongEntity
 import org.jetbrains.exposed.dao.LongEntityClass
@@ -10,8 +11,8 @@ import org.jetbrains.exposed.sql.`java-time`.datetime
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.LocalDateTime
 
-class ExposedDatabase(val db: Database) {
-    val audioDB = AudioDB(this)
+class ExposedDatabase(val db: Database, bot: Bot) {
+    val audioDB = AudioDB(this, bot)
     val moderationDB = ModerationDB(this)
 
     init {

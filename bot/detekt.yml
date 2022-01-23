@@ -4,3 +4,19 @@ complexity:
 style:
   WildcardImport:
     active: false
+  MagicNumber:
+    ignoreNumbers:
+      - "0"
+      - "1"
+      - "2"
+      - "10"
+      - "60"
+      - "3600"
+      - "1000"
+      - "1024"
+      - "3600000"
+      - "60000"
+  ForbiddenComment:
+    active: false  # why would you disable todos
+  MaxLineLength:
+    excludeCommentStatements: true

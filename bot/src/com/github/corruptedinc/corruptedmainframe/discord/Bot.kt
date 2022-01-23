@@ -6,6 +6,7 @@ import com.github.corruptedinc.corruptedmainframe.commands.Commands
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.commands.Leveling
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.plugin.PluginLoader
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.injectKTX
 import dev.minn.jda.ktx.listener
@@ -22,13 +23,15 @@ import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent
 import net.dv8tion.jda.api.requests.GatewayIntent
 import net.dv8tion.jda.api.utils.cache.CacheFlag
 import org.jetbrains.exposed.sql.Database
+import org.slf4j.Logger
 import org.slf4j.impl.SimpleLoggerFactory
+import java.io.File
 import java.time.Instant
 
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class Bot(val config: Config) {
-    val log = SimpleLoggerFactory().getLogger("aaaaaaa") // Creates a log.
+    val log: Logger = SimpleLoggerFactory().getLogger("aaaaaaa") // Creates a log.
     val startTime: Instant = Instant.now() // Sets the start time of the bot.
     val jda = JDABuilder.create(config.token,
         GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS,
@@ -37,13 +40,16 @@ class Bot(val config: Config) {
         .injectKTX()
         .build() // The actual API for discord.
     val scope = CoroutineScope(Dispatchers.Default)
+    // Creates a database instance from the URL and driver specified in the config file.  The jar includes the postgresql driver
     val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver).apply {
         useNestedTransactions = true
-    }) // Creates a database. Which is exposed. Now look away.
+    }, this)
     val audio = Audio(this)
     val leveling = Leveling(this)
     val buttonListeners = mutableListOf<(ButtonClickEvent) -> Unit>()
     val starboard = Starboard(this)
+    val commands = Commands(this)
+    private val plugins = PluginLoader(File("plugins"), this)
 
     companion object {
         /** Number of milliseconds between checking for expiring reminders and mutes. */
@@ -139,7 +145,7 @@ class Bot(val config: Config) {
             event.guild.addRoleToMember(event.userId, role).queue()
         }
 
-        @Suppress("ReturnCount")  // todo maybe fix?  not sure how to make this work
+        @Suppress("ReturnCount")
         jda.listener<MessageReactionRemoveEvent> { event ->
             if (event.user?.let { database.banned(it) } == true) return@listener
             val roleId = database.moderationDB.autoRole(event.messageIdLong, event.reactionEmote) ?: return@listener
@@ -174,6 +180,7 @@ class Bot(val config: Config) {
             buttonListeners.forEach { it(event) }
         }
 
-        Commands(this)
+        plugins.loadPlugins()
+        commands.registerAll()
     }
 }

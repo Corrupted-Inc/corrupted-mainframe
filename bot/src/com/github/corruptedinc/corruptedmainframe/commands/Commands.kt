@@ -9,7 +9,6 @@ import com.github.corruptedinc.corruptedmainframe.utils.containsAny
 import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
 import dev.minn.jda.ktx.Message
 import dev.minn.jda.ktx.await
-import dev.minn.jda.ktx.interactions.paginator
 import dev.minn.jda.ktx.interactions.replyPaginator
 import dev.minn.jda.ktx.listener
 import kotlinx.coroutines.*
@@ -97,18 +96,17 @@ class Commands(val bot: Bot) {
         private const val REMINDERS_PER_PAGE = 15
         private const val MAX_REMINDERS = 128
 
+        private const val LEVEL_BAR_WIDTH = 24
+
         fun adminInvite(botId: String) =
             "https://discord.com/api/oauth2/authorize?client_id=$botId&permissions=8&scope=applications.commands%20bot"
 
         fun basicInvite(botId: String) =
             "https://discord.com/api/oauth2/authorize?client_id=$botId" +
                     "&permissions=271830080&scope=applications.commands%20bot"
-
-        val unauthorized = EmbedBuilder().setTitle("Insufficient Permissions")
-            .setColor(ERROR_COLOR).build()
     }
 
-    val newCommands = mutableListOf<CommandData>()
+    private val newCommands = mutableListOf<CommandData>()
 
     // TODO custom listener pool that handles exceptions
     // TODO cleaner way than upserting the command every time
@@ -165,7 +163,8 @@ class Commands(val bot: Bot) {
         }
     }
 
-    init {
+    @Suppress("ComplexMethod", "LongMethod", "ThrowsCount")
+    fun registerAll() {
         register(CommandData("invite", "Invite Link")) {
             it.replyEmbeds(embed("Invite Link",
                 description = "[Admin invite](${adminInvite(bot.jda.selfUser.id)})\n" +
@@ -491,7 +490,8 @@ class Commands(val bot: Bot) {
                         event.replyEmbeds(embed("No reminders")).await()
                         return@register
                     }
-                    event.replyPaginator(pages = embeds.toTypedArray(), Duration.of(BUTTON_TIMEOUT, ChronoUnit.MILLIS).toKotlinDuration()).await()
+                    event.replyPaginator(pages = embeds.toTypedArray(), Duration.of(BUTTON_TIMEOUT, ChronoUnit.MILLIS)
+                        .toKotlinDuration()).await()
                 }
 
                 "add" -> {
@@ -743,7 +743,8 @@ class Commands(val bot: Bot) {
                 .map { Message("```\n$it```") }
 
             @Suppress("SpreadOperator")
-            event.replyPaginator(pages = pages.toTypedArray(), Duration.of(BUTTON_TIMEOUT, ChronoUnit.MILLIS).toKotlinDuration()).await()
+            event.replyPaginator(pages = pages.toTypedArray(), Duration.of(BUTTON_TIMEOUT, ChronoUnit.MILLIS)
+                .toKotlinDuration()).await()
         }
 
         register(CommandData("level", "Gets your current level")
@@ -756,12 +757,12 @@ class Commands(val bot: Bot) {
             val levelEndXP = bot.leveling.levelToPoints(ceil(level))
 
             val portion = (xp - levelStartXP) / (levelEndXP - levelStartXP)
-            val width = 24
 
             val parts = " ▏▎▍▌▋▊▉█"
-            val blocks = width * portion
+            val blocks = LEVEL_BAR_WIDTH * portion
+            @Suppress("MagicNumber")
             val out = (parts.last().toString().repeat(blocks.toInt()) +
-                    parts[((blocks - blocks.toInt().toDouble()) * 8).toInt()]).padEnd(width, ' ')
+                    parts[((blocks - blocks.toInt().toDouble()) * 8).toInt()]).padEnd(LEVEL_BAR_WIDTH, ' ')
 
             val start = levelStartXP.toInt().coerceAtLeast(0).toString()
             val end = levelEndXP.toInt().toString()
@@ -769,7 +770,7 @@ class Commands(val bot: Bot) {
             event.replyEmbeds(embed("Level ${level.toInt()}", description = "${user.asMention} has " +
                     "${xp.toInt()} points\nonly ${(levelEndXP - xp).roundToInt()} points to " +
                     "go until level ${level.toInt() + 1}!\n" +
-                    "`" + start.padEnd(width + 2 - end.length, ' ') + end + "`\n" +
+                    "`" + start.padEnd(LEVEL_BAR_WIDTH + 2 - end.length, ' ') + end + "`\n" +
                     "`|$out|`",
                 thumbnail = user.effectiveAvatarUrl,
                 stripPings = false)).await()

@@ -310,7 +310,9 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         timeStr = timeStr.substringBeforeLast(':', "")
         val hours = timeStr.substringAfterLast(':').toUIntOrNull() ?: 0U
 
-        val totalMilliseconds = (seconds * 1000).toLong() + (minutes.toInt() * 60_000).toLong() + (hours.toInt() * 3600_000).toLong()
+        val totalMilliseconds = (seconds * 1000).toLong() +
+                (minutes.toInt() * 60_000).toLong() +
+                (hours.toInt() * 3600_000).toLong()
 
         state.progress = totalMilliseconds
         event.replyEmbeds(embed("Seeked to ${totalMilliseconds / 1000} seconds"))

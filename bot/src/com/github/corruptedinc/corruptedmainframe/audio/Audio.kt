@@ -145,6 +145,7 @@ class Audio(val bot: Bot) {
             try {
                 state.updateDatabase()
             } catch (e: EntityNotFoundException) {
+                bot.log.error(e.stackTraceToString())
                 state.destroy()
             }
         }
