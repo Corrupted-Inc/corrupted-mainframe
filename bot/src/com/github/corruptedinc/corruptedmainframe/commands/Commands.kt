@@ -144,8 +144,6 @@ class Commands(val bot: Bot) {
     }
 
     fun assertAdmin(event: SlashCommandEvent) {
-//        if (!(bot.database.user(event.user).botAdmin || event.member.admin))
-//            throw CommandException("You need to be an administrator to run this command!")
         assertPermissions(event, Permission.ADMINISTRATOR)
     }
 
@@ -193,44 +191,6 @@ class Commands(val bot: Bot) {
                 }
             event.replyEmbeds(embed("${event.user.name} is playing...", description = out)).await()
         }
-
-        // built into discord now, TODO remove completely (including tables)
-//        register(CommandData("mute", "Mute a user")
-//            .addOption(OptionType.USER, "user", "The user to mute", true)
-//            .addOption(OptionType.INTEGER, "seconds", "The number of seconds to mute the user for", true)) { event ->
-//
-//            assertAdmin(event)
-//
-//            val user = event.getOption("user")?.asUser
-//            val time = event.getOption("seconds")?.asLong?.coerceAtLeast(0) ?: 0
-//            val member = user?.let { event.guild?.getMember(it) }
-//                ?: throw CommandException("Must be a member of this server")
-//
-//            val end = Instant.now().plusSeconds(time)
-//            bot.database.moderationDB.addMute(user, member.roles, end, event.guild!!)
-//
-//            member.guild.modifyMemberRoles(member, listOf()).await()
-//
-//            event.replyEmbeds(
-//                embed("Muted ${user.asTag} for ${Duration.ofSeconds(time).toHumanReadable()}")).await()
-//        }
-//
-//        register(CommandData("unmute", "Unmute a user")
-//            .addOption(OptionType.USER, "user", "The user to unmute")) { event ->
-//
-//            assertAdmin(event)
-//            val user = event.getOption("user")?.asUser!!
-//
-//            val mute = bot.database.moderationDB.findMute(user, event.guild
-//                ?: throw CommandException("This command must be run in a guild!")
-//            ) ?: throw CommandException("${user.asMention} isn't muted!")
-//
-//            event.guild!!.modifyMemberRoles(
-//                event.guild!!.getMember(user)!!,
-//                bot.database.moderationDB.roleIds(mute).map { event.guild!!.getRoleById(it) }).await()
-//
-//            event.replyEmbeds(embed("Unmuted ${user.asTag}")).await()
-//        }
 
         // TODO replace with a better backend
         register(CommandData("math", "Evaluate arbitrary-precision math")
@@ -531,6 +491,9 @@ class Commands(val bot: Bot) {
         }
 
         registerAudioCommands(bot, this)
+        registerCommands(bot)
+        registerBotCommands(bot)
+        bot.leveling.registerCommands()
 
         bot.scope.launch(Dispatchers.IO) {
             bot.jda.awaitReady()
