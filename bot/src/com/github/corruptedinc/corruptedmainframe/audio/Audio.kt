@@ -190,8 +190,8 @@ class Audio(val bot: Bot) {
                 }
             })
 
-            // Not sure what kind of stuff can be thrown here
-            @Suppress("SwallowedException", "TooGenericExceptionCaught")
+            // Not sure what kind of stuff can be thrown here, so catch everything
+            @Suppress("TooGenericExceptionCaught")
             try {
                 channel?.guild?.audioManager?.openAudioConnection(channel)
                 channel?.guild?.audioManager?.connectionListener = object : ConnectionListener {

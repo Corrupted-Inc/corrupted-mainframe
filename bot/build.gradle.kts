@@ -24,9 +24,9 @@ dependencies {
     implementation(group = "org.postgresql", name = "postgresql", version = "42.2.16")
     implementation(group = "org.slf4j", name = "slf4j-simple", version = "1.7.30")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.6.0")
-    implementation(group = "org.jetbrains.exposed", name = "exposed-dao", version = "0.33.1")
-    implementation(group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "0.33.1")
-    implementation(group = "org.jetbrains.exposed", name = "exposed-java-time", version = "0.33.1")
+    implementation(group = "org.jetbrains.exposed", name = "exposed-dao", version = "0.37.3")
+    implementation(group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "0.37.3")
+    implementation(group = "org.jetbrains.exposed", name = "exposed-java-time", version = "0.37.3")
     implementation("com.sedmelluq:lavaplayer:1.3.73")
     runtimeOnly("com.sedmelluq:lavaplayer-common:1.0.6")
     implementation("com.google.guava:guava:31.0.1-jre")
@@ -34,6 +34,7 @@ dependencies {
     implementation("ch.obermuhlner:big-math:2.3.0")
     implementation("com.jagrosh:jda-utilities:3.0.5")
     implementation("org.ocpsoft.prettytime:prettytime-nlp:5.0.2.Final")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.0.5")
 }
 
 detekt {

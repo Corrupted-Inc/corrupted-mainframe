@@ -5,12 +5,12 @@ import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.VARCHAR_MAX_LENGTH
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Reminders
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
-import com.github.corruptedinc.corruptedmainframe.utils.containsAny
-import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
+import com.github.corruptedinc.corruptedmainframe.utils.*
 import dev.minn.jda.ktx.Message
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.interactions.replyPaginator
 import dev.minn.jda.ktx.listener
+import dev.minn.jda.ktx.messages.editMessage_
 import kotlinx.coroutines.*
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.Permission
@@ -86,17 +86,12 @@ class Commands(val bot: Bot) {
         private const val SLOTS_HEIGHT = 3
         private const val SLOTS_WIDTH = 6
 
-        private const val MAX_PURGE = 1000
-        private const val PURGE_DELAY = 2000L
-
         const val BUTTON_TIMEOUT = 120_000L
 
         private val ERROR_COLOR = Color(235, 70, 70)
 
         private const val REMINDERS_PER_PAGE = 15
         private const val MAX_REMINDERS = 128
-
-        private const val LEVEL_BAR_WIDTH = 24
 
         fun adminInvite(botId: String) =
             "https://discord.com/api/oauth2/authorize?client_id=$botId&permissions=8&scope=applications.commands%20bot"
@@ -106,7 +101,7 @@ class Commands(val bot: Bot) {
                     "&permissions=271830080&scope=applications.commands%20bot"
     }
 
-    private val newCommands = mutableListOf<CommandData>()
+    internal val newCommands = mutableListOf<CommandData>()
 
     // TODO custom listener pool that handles exceptions
     // TODO cleaner way than upserting the command every time
@@ -171,144 +166,7 @@ class Commands(val bot: Bot) {
                               "[Basic permissions](${basicInvite(bot.jda.selfUser.id)})"
             )).await()
         }
-
-        register(CommandData("reactionrole", "Reactions are specified with the format " +
-                "'\uD83D\uDC4D:rolename, \uD83D\uDCA5:otherrolename'.")
-            .addOption(OptionType.STRING, "message", "Message link", true)
-            .addOption(OptionType.STRING, "reactions", "Reactions", true)) { event ->
-
-            assertAdmin(event)
-
-            val reactionsMap = event.getOption("reactions")!!.asString.removeSurrounding("\"").split(", ")
-                    // Split by colon into emote and role name, stripping spaces from the start of the latter
-                    .map { Pair(
-                        it.substringBeforeLast(":"),
-                        it.substringAfterLast(":").dropWhile { c -> c == ' ' })
-                    }
-
-                    // Retrieve all the roles
-                    .mapNotNull {
-                        event.guild?.getRolesByName(it.second, true)
-                            ?.firstOrNull()?.run { Pair(it.first, this) }
-                    }
-                    .filter { event.member?.canInteract(it.second) == true }  // Prevent privilege escalation
-                    .associate { Pair(it.first, it.second.idLong) }  // Convert to map for use by the database
-
-            val link = event.getOption("message")!!.asString
-            val messageId = link.substringAfterLast("/")
-            val channelId = link.removeSuffix("/$messageId").substringAfterLast("/").toLongOrNull()
-                ?: throw CommandException("Invalid message link")
-            val channel = event.guild?.getTextChannelById(channelId)
-            val msg = channel?.retrieveMessageById(
-                messageId.toLongOrNull()
-                    ?: throw CommandException("Invalid message link")
-            )?.await() ?: throw CommandException("Invalid message link")
-
-            bot.database.moderationDB.addAutoRole(msg, reactionsMap)
-
-            for (reaction in reactionsMap) {
-                msg.addReaction(reaction.key).await()
-            }
-
-            event.replyEmbeds(embed("Successfully added ${reactionsMap.size} reaction roles:",
-                content = reactionsMap.map {
-                    Field(it.key, event.guild?.getRoleById(it.value)?.name, false)
-                })).await()
-        }
-
-
-        register(CommandData("purge", "Purges messages")
-            .addOption(OptionType.INTEGER, "count", "The number of messages to purge", true)) { event ->
-
-            val count = (event.getOption("count")?.asLong ?: throw CommandException("Invalid number")).toInt()
-                .coerceIn(1, MAX_PURGE) + 1
-
-            assertPermissions(event, Permission.MESSAGE_MANAGE)
-
-            event.deferReply().await()
-
-            delay(PURGE_DELAY)
-            var yetToDelete = count
-            while (yetToDelete > 0) {
-                @Suppress("MagicNumber")
-                val maxDeletion = 100
-
-                val messages = event.channel.history.retrievePast(min(maxDeletion, yetToDelete)).await()
-                if (messages.size == 1) {
-                    messages.first().delete().await()
-                } else {
-                    @Suppress("MagicNumber")
-                    val twoWeeksAgo = System.currentTimeMillis() -
-                            Duration.of(14, ChronoUnit.DAYS).toMillis()
-
-                    val bulkDeletable = messages.filter {
-                        TimeUtil.getDiscordTimestamp(twoWeeksAgo) < MiscUtil.parseSnowflake(
-                            it.id
-                        )
-                    }
-                    event.textChannel.deleteMessages(bulkDeletable).await()
-                    for (item in messages - bulkDeletable.toSet()) {
-                        item.delete().await()
-                        delay(maxDeletion.toLong())
-                    }
-                }
-                if (messages.size != min(maxDeletion, yetToDelete)) break
-                yetToDelete -= messages.size
-                @Suppress("MagicNumber")
-                delay(1100)  // To prevent ratelimit being exceeded
-            }
-        }
-
-        register(CommandData("stats", "Shows bot statistics")) { event ->
-            // TODO daily commands executed, new servers, etc
-
-            val builder = EmbedBuilder()
-            builder.setTitle("Statistics and Info")
-            builder.setThumbnail(event.guild?.iconUrl)
-            val id = bot.jda.selfUser.id
-            builder.setDescription("""
-                **Bot Info**
-                Members: ${bot.database.users().size}
-                Guilds: ${bot.database.guildCount()}
-                Commands: ${newCommands.size}
-                Gateway ping: ${bot.jda.gatewayPing}ms
-                Rest ping: ${bot.jda.restPing.await()}ms
-                Uptime: ${Duration.between(bot.startTime, Instant.now()).toHumanReadable()}
-                Git: ${bot.config.gitUrl}
-                Invite: [Admin invite](${adminInvite(id)})  [basic permissions](${basicInvite(id)})
-            """.trimIndent())
-            event.replyEmbeds(builder.build()).await()
-        }
-
-        register(CommandData("ban", "Ban a user")
-            .addOption(OptionType.USER, "user", "The user to ban", true)) { event ->
-            assertPermissions(event, Permission.BAN_MEMBERS)
-            val user = event.getOption("user")?.asUser
-                ?: throw CommandException("Failed to find user")
-
-            event.guild?.ban(user, 0)?.await() ?: throw CommandException("Must be run in a server!")
-            event.replyEmbeds(embed("Banned", description = "Banned ${user.asMention}")).await()
-        }
-
-        register(CommandData("unban", "Unban a user")
-            .addOption(OptionType.USER, "user", "The user to unban", true)) { event ->
-            assertPermissions(event, Permission.BAN_MEMBERS)
-            val user = event.getOption("user")?.asUser ?: throw CommandException("Failed to find user!")
-
-            event.guild?.unban(user)?.await() ?: throw CommandException("Couldn't unban user!")
-            event.replyEmbeds(embed("Unbanned", description = "Unbanned ${user.asMention}"))
-        }
-
-        register(CommandData("kick", "Kick a user")
-            .addOption(OptionType.USER, "user", "The user to kick", true)) { event ->
-            assertPermissions(event, Permission.KICK_MEMBERS)
-            val user = event.getOption("user")?.asUser
-                ?: throw CommandException("Failed to find user")
-
-            event.guild?.kick(user.id)?.await() ?: throw CommandException("Must be run in a server!")
-            event.replyEmbeds(embed("Kicked", description = "Kicked ${user.asMention}")).await()
-        }
-
+        
         register(CommandData("slots", "Play the slots")) { event ->
             val emotes = ":cherries:, :lemon:, :seven:, :broccoli:, :peach:, :green_apple:".split(", ")
 
@@ -334,63 +192,6 @@ class Commands(val bot: Bot) {
                     wheels.joinToString("   ") { it[n] }
                 }
             event.replyEmbeds(embed("${event.user.name} is playing...", description = out)).await()
-        }
-
-        register(CommandData("admin", "Makes a user an admin")
-            .addOption(OptionType.USER, "user", "The user to make an admin")) { event ->
-                // Don't replace with assertAdmin(), this doesn't allow server admins to make changes
-                val isAdmin = bot.database.user(event.user).botAdmin ||
-                        bot.config.permaAdmins.contains(event.user.id)
-
-                if (!isAdmin) throw CommandException("You must be a bot admin to use this command!")
-
-                val user = event.getOption("user")?.asUser ?: throw CommandException("Couldn't find that user!")
-
-                transaction(bot.database.db) { bot.database.user(user).botAdmin = true }
-
-                event.replyEmbeds(embed("Successfully made @${user.asTag} a global admin")).await()
-        }
-
-        register(CommandData("globalban", "Ban a user from using the bot")
-            .addOption(OptionType.USER, "user", "The user to ban", true)) { event ->
-                if (!bot.database.user(event.user).botAdmin)
-                    throw CommandException("You must be a bot admin to use this command!")
-
-                val user = event.getOption("user")?.asUser ?: throw CommandException("Couldn't find the user!")
-
-                bot.database.ban(user)
-
-                event.replyEmbeds(embed("Banned ${user.asMention}")).await()
-        }
-
-        register(CommandData("globalunban", "Unban a user from using the bot")
-            .addOption(OptionType.USER, "user", "The user to unban", true)) { event ->
-            if (!bot.database.user(event.user).botAdmin)
-                throw CommandException("You must be a bot admin to use this command!")
-
-            val user = event.getOption("user")?.asUser ?: throw CommandException("Couldn't find the user!")
-
-            bot.database.unban(user)
-
-            event.replyEmbeds(embed("Unbanned ${user.asMention}")).await()
-        }
-
-        register(CommandData("unadmin", "Revokes a user's bot admin status")
-            .addOption(OptionType.USER, "user", "The user to make no longer an admin")) { event ->
-
-            // Don't replace with assertAdmin(), this doesn't allow server admins to make changes
-            val isAdmin = bot.database.user(event.user).botAdmin ||
-                    bot.config.permaAdmins.contains(event.user.id)
-
-            if (!isAdmin) throw CommandException("You must be a bot admin to use this command!")
-
-            val user = event.getOption("user")?.asUser ?: throw CommandException("Couldn't find that user!")
-
-            if (bot.config.permaAdmins.contains(user.id)) throw CommandException("That user is a permanent admin!")
-
-            transaction(bot.database.db) { bot.database.user(user).botAdmin = false }
-
-            event.replyEmbeds(embed("Successfully made @${user.asTag} not a global admin")).await()
         }
 
         // built into discord now, TODO remove completely (including tables)
@@ -456,14 +257,6 @@ class Commands(val bot: Bot) {
                 throw CommandException("Failed to evaluate '$exp'!")
             }
         }
-
-        register(CommandData("levelnotifs", "Toggle level notifications")
-            .addOption(OptionType.BOOLEAN, "enabled", "If you should be shown level notifications")) { event ->
-                val enabled = event.getOption("enabled")!!.asBoolean
-                bot.database.setPopups(event.user, event.guild ?:
-                throw CommandException("This command must be run in a server!"), enabled)
-                event.replyEmbeds(embed("Set level popups to $enabled")).await()
-            }
 
         register(CommandData("reminders", "Manage reminders").addSubcommands(
             SubcommandData("list", "List your reminders"),
@@ -565,19 +358,6 @@ class Commands(val bot: Bot) {
             }
         }
 
-        register(CommandData("restart", "Restart the bot")) { event ->
-            // Don't replace with assertAdmin(), this doesn't allow server admins to run
-            val isAdmin = bot.database.user(event.user).botAdmin ||
-                    bot.config.permaAdmins.contains(event.user.id)
-
-            if (!isAdmin) throw CommandException("You need to be admin to use this command!")
-
-//            bot.audio.gracefulShutdown()  // handled by shutdown hook in Bot.kt
-            bot.log.error("${event.user.asTag} (id ${event.user.id}) ran /restart")
-            event.replyEmbeds(embed("Shutting down...")).await()
-            exitProcess(0)
-        }
-
         // TODO better parsing
         register(CommandData("timezone", "Set your timezone (used for reminders)")
             .addOption(OptionType.STRING, "zone", "Your timezone", true)) { event ->
@@ -593,86 +373,6 @@ class Commands(val bot: Bot) {
                 user.timezone = zone
             }
             event.replyEmbeds(embed("Set your timezone to $zone")).await()
-        }
-
-        register(CommandData("starboard", "Manage the starboard").addSubcommands(
-            SubcommandData("setup", "Set up or modify the starboard")
-                .addOption(OptionType.CHANNEL, "channel", "The starboard channel", true)
-                .addOption(OptionType.STRING, "emote", "The starboard emote", true)
-                .addOption(OptionType.INTEGER, "threshold", "The starboard threshold (default 7)", false),
-            SubcommandData("disable", "Disable the starboard"),
-            SubcommandData("remove", "Remove a message from the starboard")
-                .addOption(OptionType.STRING, "link", "A link to the offending message", true),
-            SubcommandData("star", "Add a message to the starboard")
-                .addOption(OptionType.STRING, "link", "A link to the message to be added", true),
-            SubcommandData("threshold", "Set the threshold for the starboard")
-                .addOption(OptionType.INTEGER, "threshold", "The number of reactions", true)
-        )) { event ->
-            assertPermissions(event, Permission.MESSAGE_MANAGE)
-
-            when (event.subcommandName) {
-                "setup" -> {
-                    val channel = event.getOption("channel")!!.asMessageChannel as? TextChannel
-                        ?: throw CommandException("Must be a message channel!")
-                    val reactionName = event.getOption("emote")!!.asString
-                    val reaction = event.guild!!.getEmoteById(
-                        reactionName.substringAfterLast(':').removeSuffix(">")
-                    ) ?: throw CommandException("Couldn't find a custom emoji with that name!")
-                    val threshold = event.getOption("threshold")?.asLong?.coerceIn(0, Int.MAX_VALUE.toLong())?.toInt()
-                        ?: ExposedDatabase.STARBOARD_THRESHOLD_DEFAULT
-                    bot.database.trnsctn {
-                        val g = bot.database.guild(event.guild ?: return@trnsctn)
-                        g.starboardChannel = channel.idLong
-                        g.starboardReaction = reaction.name
-                        g.starboardThreshold = threshold
-                    }
-                    event.replyEmbeds(embed("Starboard",
-                        description = "Starboard successfully set up in ${channel.asMention}.")).await()
-                }
-                "disable" -> {
-                    bot.database.trnsctn {
-                        val g = bot.database.guild(event.guild!!)
-                        g.starboardChannel = null
-                    }
-                    event.replyEmbeds(embed("Starboard", description = "Starboard disabled.")).await()
-                }
-                "remove" -> {
-                    val msgID = event.getOption("link")!!.asString.substringAfterLast('/')
-                    val chanID = bot.database.trnsctn {
-                        val g = bot.database.guild(event.guild!!)
-                        g.starboardChannel
-                    }
-                    val channel = event.guild?.getTextChannelById(chanID
-                        ?: throw CommandException("No starboard set up!"))
-                        ?: throw CommandException("No starboard set up!")  // this is fine
-
-                    bot.starboard.unstarDB(channel.retrieveMessageById(msgID).await())
-                    channel.deleteMessageById(msgID).await()
-                    event.replyEmbeds(embed("Starboard", description = "Removed message.")).await()
-                }
-                "star" -> {
-                    val msgLink = event.getOption("link")!!.asString
-                    val msgID = msgLink.substringAfterLast('/')
-                    val msgChannel = msgLink.removeSuffix("/$msgID").substringAfterLast('/')
-
-                    val chan = event.guild!!.getTextChannelById(msgChannel)
-                        ?: throw CommandException("Message not found!")
-                    val msg = chan.retrieveMessageById(msgID).await()
-                        ?: throw CommandException("Message not found!")
-
-                    bot.starboard.star(msg)
-
-                    event.replyEmbeds(embed("Starboard", description = "Starred message.")).await()
-                }
-                "threshold" -> {
-                    bot.database.trnsctn {
-                        val g = bot.database.guild(event.guild!!)
-                        g.starboardThreshold = event.getOption("threshold")!!.asLong
-                            .coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
-                    }
-                    event.replyEmbeds(embed("Starboard", description = "Successfully updated threshold.")).await()
-                }
-            }
         }
 
         register(CommandData("sql", "not for you")
@@ -740,51 +440,94 @@ class Commands(val bot: Bot) {
 
             @Suppress("MagicNumber")
             val pages = table.chunked(1900)
-                .map { Message("```\n$it```") }
+                .map { embed("a", description = "```\n$it```") }
 
             @Suppress("SpreadOperator")
             event.replyPaginator(pages = pages.toTypedArray(), Duration.of(BUTTON_TIMEOUT, ChronoUnit.MILLIS)
                 .toKotlinDuration()).await()
         }
 
-        register(CommandData("level", "Gets your current level")
-            .addOption(OptionType.USER, "user", "The user to get the level of (optional)", false)
+        register(CommandData("tba", "Get information from The Blue Alliance about a team.")
+            .addOption(OptionType.INTEGER, "number", "The team number", true)
+            .addOption(OptionType.INTEGER, "year", "The year", false)
+            .addOption(OptionType.STRING, "event", "The event name", false)
         ) { event ->
-            val user = event.getOption("user")?.asUser ?: event.user
-            val xp = bot.leveling.points(user, event.guild!!)
-            val level = bot.leveling.pointsToLevel(xp)
-            val levelStartXP = bot.leveling.levelToPoints(floor(level))
-            val levelEndXP = bot.leveling.levelToPoints(ceil(level))
+            event.deferReply().await()
+            bot.scope.launch {
+                val hook = event.hook
+                try {
+                    val number = event.getOption("number")!!.asLong
+                    val teamInfo = bot.theBlueAlliance.teamInfo(number.toInt())
+                    val year = event.getOption("year")?.asLong
+                    val eventName = event.getOption("event")?.asString
+                    if (eventName != null && year == null)
+                        throw CommandException("Year must be specified to get event info!")
+                    teamInfo ?: throw CommandException("Failed to get info on team '$number'!")
+                    val fields = mutableListOf<Field>()
+                    if (teamInfo.nickname != null) fields.add(Field("Name", teamInfo.name, false))
+                    if (teamInfo.country != null) fields.add(Field("Country", teamInfo.country, true))
+                    if (teamInfo.city != null) fields.add(Field("City", teamInfo.city, true))
+                    if (teamInfo.school != null) fields.add(Field("School", teamInfo.school, true))
+                    if (teamInfo.rookieYear != null) fields.add(
+                        Field(
+                            "Rookie Year",
+                            teamInfo.rookieYear.toString(),
+                            true
+                        )
+                    )
+                    if (teamInfo.website != null) fields.add(Field("Website", teamInfo.website, false))
 
-            val portion = (xp - levelStartXP) / (levelEndXP - levelStartXP)
+                    if (year != null && eventName == null) {
+                        // TODO: general team performance
+                    } else if (year != null && eventName != null) {
+                        // 1d7ce
+                        val eventObj = bot.theBlueAlliance.simpleEventByName(eventName, year.toInt())
+                            ?: throw CommandException("Couldn't find event '$eventName'!")
+                        val teamStatus = bot.theBlueAlliance.teamEventStatus(teamInfo.teamNumber, eventObj.key)
+                            ?: throw CommandException("Couldn't find $number's performance at ${eventObj.name}!")
+                        val matches = bot.theBlueAlliance.matches(number.toInt(), eventObj.key) ?: emptyList()
 
-            val parts = " ▏▎▍▌▋▊▉█"
-            val blocks = LEVEL_BAR_WIDTH * portion
-            @Suppress("MagicNumber")
-            val out = (parts.last().toString().repeat(blocks.toInt()) +
-                    parts[((blocks - blocks.toInt().toDouble()) * 8).toInt()]).padEnd(LEVEL_BAR_WIDTH, ' ')
+                        hook.editOriginalEmbeds(
+                            embed(
+                                "$number at ${eventObj.name} in $year",
+                                content = listOf(
+                                    Field(
+                                        "Status",
+                                        teamStatus.overallStatusString
+                                            ?.replace("</?b>".toRegex(), "**")
+                                        , false)
+                                ),
+                                description = "```" + table(
+                                    arrayOf(
+                                        Row("R1", "R2", "R3", "B1", "B2", "B3", "Red", "Blue")
+                                    ) + matches.map {
+                                        val red = it.alliances!!.red.teamKeys.map { item -> item.removePrefix("frc") }
+                                        val blue = it.alliances.blue.teamKeys.map { item -> item.removePrefix("frc") }
+                                        val redWon = it.winningAlliance == "red"
+                                        val blueWon = it.winningAlliance == "blue"
+                                        Row(red[0], red[1], red[2], blue[0], blue[1], blue[2],
+                                            it.alliances.red.score.run { if (redWon) "*$this*" else toString() },
+                                            it.alliances.blue.score.run { if (blueWon) "*$this*" else toString() },
+                                        )
+                                    }
+                                ) + "```"
+                            )
+                        ).await()
+                        return@launch
+                    }
 
-            val start = levelStartXP.toInt().coerceAtLeast(0).toString()
-            val end = levelEndXP.toInt().toString()
-
-            event.replyEmbeds(embed("Level ${level.toInt()}", description = "${user.asMention} has " +
-                    "${xp.toInt()} points\nonly ${(levelEndXP - xp).roundToInt()} points to " +
-                    "go until level ${level.toInt() + 1}!\n" +
-                    "`" + start.padEnd(LEVEL_BAR_WIDTH + 2 - end.length, ' ') + end + "`\n" +
-                    "`|$out|`",
-                thumbnail = user.effectiveAvatarUrl,
-                stripPings = false)).await()
-        }
-
-        register(CommandData("togglelevels", "Enable or disable level notifications for the whole server.")
-            .addOption(OptionType.BOOLEAN, "enabled", "If level up notifications should be shown.")
-        ) { event ->
-            assertPermissions(event, Permission.ADMINISTRATOR)
-            val e = event.getOption("enabled")!!.asBoolean
-            bot.database.trnsctn {
-                bot.database.guild(event.guild!!).levelsEnabled = e
+                    hook.editOriginalEmbeds(
+                        embed(
+                            teamInfo.nickname ?: teamInfo.name,
+                            url = "https://thebluealliance.com/team/$number",
+                            fields,
+                            description = number.toString()
+                        )
+                    ).await()
+                } catch (e: CommandException) {
+                    hook.editOriginalEmbeds((embed("Error", color = ERROR_COLOR, description = e.message))).await()
+                }
             }
-            event.replyEmbeds(embed("Successfully ${if (e) "enabled" else "disabled"} level notifications")).await()
         }
 
         registerAudioCommands(bot, this)

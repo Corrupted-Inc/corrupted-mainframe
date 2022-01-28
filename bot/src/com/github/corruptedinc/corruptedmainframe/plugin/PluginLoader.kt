@@ -40,6 +40,6 @@ class PluginLoader(private val pluginDir: File, private val bot: Bot) {
                 bot.log.error("Class '${metadata.pluginClassName}' from plugin '$name' doesn't implement Plugin!")
             }
         }
-        bot.log.info("Loaded plugins: ${plugins.joinToString { it.second.name }}")
+        if (plugins.isNotEmpty()) bot.log.info("Loaded plugins: ${plugins.joinToString { it.second.name }}")
     }
 }

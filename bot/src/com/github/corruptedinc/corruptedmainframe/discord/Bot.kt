@@ -5,6 +5,7 @@ import com.github.corruptedinc.corruptedmainframe.audio.Audio
 import com.github.corruptedinc.corruptedmainframe.commands.Commands
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.commands.Leveling
+import com.github.corruptedinc.corruptedmainframe.commands.TheBlueAlliance
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.plugin.PluginLoader
 import dev.minn.jda.ktx.await
@@ -24,6 +25,7 @@ import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent
 import net.dv8tion.jda.api.requests.GatewayIntent
 import net.dv8tion.jda.api.utils.cache.CacheFlag
 import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.sql.DatabaseConfig
 import org.slf4j.Logger
 import org.slf4j.impl.SimpleLoggerFactory
 import java.io.File
@@ -42,14 +44,15 @@ class Bot(val config: Config) {
         .build() // The actual API for discord.
     val scope = CoroutineScope(Dispatchers.Default)
     // Creates a database instance from the URL and driver specified in the config file.  The jar includes the postgresql driver
-    val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver).apply {
-        useNestedTransactions = true
-    }, this)
+    val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver,
+        databaseConfig = DatabaseConfig { useNestedTransactions = true }
+    ), this)
     val audio = Audio(this)
     val leveling = Leveling(this)
     val buttonListeners = mutableListOf<(ButtonClickEvent) -> Unit>()
     val starboard = Starboard(this)
     val commands = Commands(this)
+    val theBlueAlliance = TheBlueAlliance(config.blueAllianceToken, scope)
     private val plugins = PluginLoader(File("plugins"), this)
 
     companion object {
