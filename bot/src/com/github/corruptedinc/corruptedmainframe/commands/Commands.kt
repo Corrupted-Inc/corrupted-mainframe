@@ -335,6 +335,10 @@ class Commands(val bot: Bot) {
             event.replyEmbeds(embed("Set your timezone to $zone")).await()
         }
 
+        register(CommandData("h", "h").addOption(OptionType.STRING, "h", "h", false)) { event ->
+            event.reply("h").await()
+        }
+
         register(CommandData("sql", "not for you")
             .addOption(OptionType.STRING, "sql", "bad", true)
             .addOption(OptionType.BOOLEAN, "commit", "keep changes?", false)
