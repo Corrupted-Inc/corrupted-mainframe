@@ -1,10 +1,12 @@
 plugins {
     id("kotlin")
     id("io.gitlab.arturbosch.detekt").version("1.18.0")
+    id("org.openjfx.javafxplugin") version "0.0.12"
 }
 
 sourceSets.main {
     java.srcDirs("src")
+    resources.srcDirs("resources")
 }
 
 repositories {
@@ -17,8 +19,8 @@ dependencies {
     testImplementation(kotlin("test-junit5"))
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.8.2")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.8.2")
-    implementation("net.dv8tion:JDA:5.0.0-alpha.4")
-    implementation("com.github.minndevelopment:jda-ktx:0.8.3-alpha.2")
+    implementation("net.dv8tion:JDA:5.0.0-alpha.9")
+    implementation("com.github.minndevelopment:jda-ktx:0.8.4-alpha.5")
     implementation(group = "com.beust", name = "klaxon", version = "5.5")
     implementation(group = "org.xerial", name = "sqlite-jdbc", version = "3.34.0")
     implementation(group = "org.postgresql", name = "postgresql", version = "42.2.16")
@@ -35,6 +37,13 @@ dependencies {
     implementation("com.jagrosh:jda-utilities:3.0.5")
     implementation("org.ocpsoft.prettytime:prettytime-nlp:5.0.2.Final")
     implementation("com.github.ben-manes.caffeine:caffeine:3.0.5")
+    implementation("dev.brachtendorf:JImageHash:1.0.0")
+}
+
+javafx {
+    version = "12"
+    modules("javafx.media")
+    configuration = "implementation"
 }
 
 detekt {
@@ -55,7 +64,7 @@ detekt {
 tasks.jar {
     archiveBaseName.set("corrupted-mainframe")
     from(configurations.runtimeClasspath.get().filter { !it.path.endsWith(".pom") }.map { if (it.isDirectory) it else zipTree(it) })
-    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
     manifest {
         attributes["Main-Class"] = "com.github.corruptedinc.corruptedmainframe.MainKt"
@@ -64,21 +73,21 @@ tasks.jar {
 
 tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
     // Target version of the generated JVM bytecode. It is used for type resolution.
-    jvmTarget = "1.8"
+    jvmTarget = "11"
 }
 
 // https://stackoverflow.com/a/55741901
 tasks {
     val sourcesJar by creating(Jar::class) {
         archiveClassifier.set("sources")
-        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
         from(sourceSets.main.get().allSource, configurations.runtimeClasspath.get().filter { !it.path.endsWith(".pom") }.map { if (it.isDirectory) it else zipTree(it) }, sourceSets.main.get().output)
     }
 
     val javadocJar by creating(Jar::class) {
         dependsOn.add(javadoc)
         archiveClassifier.set("javadoc")
-        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
         from(javadoc)
     }
 
