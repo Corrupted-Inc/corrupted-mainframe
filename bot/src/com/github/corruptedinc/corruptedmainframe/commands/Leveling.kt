@@ -9,7 +9,7 @@ import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.TextChannel
 import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.interactions.commands.OptionType
-import net.dv8tion.jda.api.interactions.commands.build.CommandData
+import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
 import kotlin.math.*
 
 @Suppress("MagicNumber")
@@ -58,7 +58,7 @@ class Leveling(private val bot: Bot) {
 
     fun registerCommands() {
         bot.commands.register(
-            CommandData("level", "Gets your current level")
+            slash("level", "Gets your current level")
             .addOption(OptionType.USER, "user", "The user to get the level of (optional)", false)
         ) { event ->
             val user = event.getOption("user")?.asUser ?: event.user
@@ -88,8 +88,8 @@ class Leveling(private val bot: Bot) {
         }
 
         bot.commands.register(
-            CommandData("togglelevels", "Enable or disable level notifications for the whole server.")
-            .addOption(OptionType.BOOLEAN, "enabled", "If level up notifications should be shown.")
+            slash("togglelevels", "Enable or disable level notifications for the whole server.")
+            .addOption(OptionType.BOOLEAN, "enabled", "If level up notifications should be shown.", true)
         ) { event ->
             bot.commands.assertPermissions(event, Permission.ADMINISTRATOR)
             val e = event.getOption("enabled")!!.asBoolean
@@ -99,7 +99,7 @@ class Leveling(private val bot: Bot) {
             event.replyEmbeds(embed("Successfully ${if (e) "enabled" else "disabled"} level notifications")).await()
         }
 
-        bot.commands.register(CommandData("levelnotifs", "Toggle level notifications")
+        bot.commands.register(slash("levelnotifs", "Toggle level notifications")
             .addOption(OptionType.BOOLEAN, "enabled", "If you should be shown level notifications")) { event ->
             val enabled = event.getOption("enabled")!!.asBoolean
             bot.database.setPopups(event.user, event.guild ?:

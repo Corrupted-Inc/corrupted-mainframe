@@ -10,26 +10,22 @@ import dev.minn.jda.ktx.Message
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.interactions.replyPaginator
 import dev.minn.jda.ktx.listener
-import dev.minn.jda.ktx.messages.editMessage_
 import kotlinx.coroutines.*
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.GuildChannel
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.MessageEmbed.Field
-import net.dv8tion.jda.api.entities.TextChannel
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
-import net.dv8tion.jda.api.events.interaction.SlashCommandEvent
+import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.exceptions.ErrorResponseException
 import net.dv8tion.jda.api.exceptions.PermissionException
 import net.dv8tion.jda.api.interactions.commands.OptionType
-import net.dv8tion.jda.api.interactions.commands.build.CommandData
-import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
-import net.dv8tion.jda.api.utils.MiscUtil
-import net.dv8tion.jda.api.utils.TimeUtil
+import net.dv8tion.jda.api.interactions.commands.SlashCommandInteraction
+import net.dv8tion.jda.api.interactions.commands.build.*
+import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
 import org.jetbrains.exposed.sql.Op
 import org.jetbrains.exposed.sql.and
-import org.jetbrains.exposed.sql.transactions.transaction
 import org.ocpsoft.prettytime.nlp.PrettyTimeParser
 import java.awt.Color
 import java.math.MathContext
@@ -38,12 +34,7 @@ import java.time.*
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAccessor
 import java.util.*
-import kotlin.math.ceil
-import kotlin.math.floor
-import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.random.Random
-import kotlin.system.exitProcess
 import kotlin.time.toKotlinDuration
 
 class Commands(val bot: Bot) {
@@ -63,7 +54,8 @@ class Commands(val bot: Bot) {
             timestamp: TemporalAccessor? = null,
             color: Color? = null,
             description: String? = null,
-            stripPings: Boolean = true
+            stripPings: Boolean = true,
+            footer: String? = null
         ): MessageEmbed {
             val builder = EmbedBuilder()
             builder.setTitle(title, url)
@@ -76,6 +68,7 @@ class Commands(val bot: Bot) {
             builder.setTimestamp(timestamp)
             builder.setColor(color)
             builder.setDescription(if (stripPings) description?.stripPings() else description)
+            builder.setFooter(footer)
             return builder.build()
         }
 
@@ -105,21 +98,46 @@ class Commands(val bot: Bot) {
 
     // TODO custom listener pool that handles exceptions
     // TODO cleaner way than upserting the command every time
-    fun register(data: CommandData, lambda: suspend (SlashCommandEvent) -> Unit) {
+    fun register(data: CommandData, lambda: suspend (SlashCommandInteractionEvent) -> Unit) {
         newCommands.add(data)
-        bot.jda.listener<SlashCommandEvent> {
+        bot.jda.listener<SlashCommandInteractionEvent> {
             if (it.name == data.name) {
+                val hook = it.hook
+                val start = System.currentTimeMillis()
                 try {
                     @Suppress("TooGenericExceptionCaught")
                     try {
+                        if (bot.database.banned(it.user)) return@listener
                         lambda(it)
                     } catch (e: CommandException) {
-                        it.replyEmbeds(embed("Error", description = e.message, color = ERROR_COLOR)).await()
+                        val embed = embed("Error", description = e.message, color = ERROR_COLOR)
+                        if (it.isAcknowledged) {
+                            hook.editOriginalEmbeds(embed).await()
+                        } else {
+                            it.replyEmbeds(embed).await()
+                        }
                     } catch (e: Exception) {
-                        it.replyEmbeds(embed("Internal Error", color = ERROR_COLOR)).await()
+                        val embed = embed("Internal Error", color = ERROR_COLOR)
+                        if (it.isAcknowledged) {
+                            hook.editOriginalEmbeds(embed).await()
+                        } else {
+                            it.replyEmbeds(embed).await()
+                        }
                         bot.log.error("Error in command '${data.name}':\n" + e.stackTraceToString())
                     }
                 } catch (ignored: PermissionException) {}  // nested try/catch is my favorite
+                bot.database.trnsctn {
+                    val g = bot.database.guild(it.guild!!)
+                    val u = bot.database.user(it.user)
+
+                    ExposedDatabase.CommandRun.new {
+                        this.guild = g.id
+                        this.user = u.id
+                        this.timestamp = Instant.now()
+                        this.command = it.name
+                        this.millis = System.currentTimeMillis() - start
+                    }
+                }
             }
         }
     }
@@ -143,11 +161,11 @@ class Commands(val bot: Bot) {
         }
     }
 
-    fun assertAdmin(event: SlashCommandEvent) {
+    fun assertAdmin(event: SlashCommandInteraction) {
         assertPermissions(event, Permission.ADMINISTRATOR)
     }
 
-    fun assertPermissions(event: SlashCommandEvent, vararg permissions: Permission,
+    fun assertPermissions(event: SlashCommandInteraction, vararg permissions: Permission,
                           channel: GuildChannel = event.guildChannel) {
         if (bot.database.trnsctn { bot.database.user(event.user).botAdmin }) return
         val member = event.member ?: throw CommandException("Missing permissions!")
@@ -158,14 +176,14 @@ class Commands(val bot: Bot) {
 
     @Suppress("ComplexMethod", "LongMethod", "ThrowsCount")
     fun registerAll() {
-        register(CommandData("invite", "Invite Link")) {
+        register(slash("invite", "Invite Link")) {
             it.replyEmbeds(embed("Invite Link",
                 description = "[Admin invite](${adminInvite(bot.jda.selfUser.id)})\n" +
                               "[Basic permissions](${basicInvite(bot.jda.selfUser.id)})"
             )).await()
         }
         
-        register(CommandData("slots", "Play the slots")) { event ->
+        register(slash("slots", "Play the slots")) { event ->
             val emotes = ":cherries:, :lemon:, :seven:, :broccoli:, :peach:, :green_apple:".split(", ")
 
 //                val numberCorrect = /*weightedRandom(
@@ -193,7 +211,7 @@ class Commands(val bot: Bot) {
         }
 
         // TODO replace with a better backend
-        register(CommandData("math", "Evaluate arbitrary-precision math")
+        register(slash("math", "Evaluate arbitrary-precision math")
             .addOption(OptionType.STRING, "expression", "The expression to evaluate", true)
             .addOption(OptionType.INTEGER, "precision", "The precision in digits")
         ) { event ->
@@ -218,7 +236,7 @@ class Commands(val bot: Bot) {
             }
         }
 
-        register(CommandData("reminders", "Manage reminders").addSubcommands(
+        register(slash("reminders", "Manage reminders").addSubcommands(
             SubcommandData("list", "List your reminders"),
             SubcommandData("add", "Add a reminder")
                 .addOption(OptionType.STRING, "name", "The name of the reminder", true)
@@ -319,7 +337,7 @@ class Commands(val bot: Bot) {
         }
 
         // TODO better parsing
-        register(CommandData("timezone", "Set your timezone (used for reminders)")
+        register(slash("timezone", "Set your timezone (used for reminders)")
             .addOption(OptionType.STRING, "zone", "Your timezone", true)) { event ->
             @Suppress("TooGenericExceptionCaught", "SwallowedException")
             val zone = try {
@@ -335,7 +353,7 @@ class Commands(val bot: Bot) {
             event.replyEmbeds(embed("Set your timezone to $zone")).await()
         }
 
-        register(CommandData("sql", "not for you")
+        register(slash("sql", "not for you")
             .addOption(OptionType.STRING, "sql", "bad", true)
             .addOption(OptionType.BOOLEAN, "commit", "keep changes?", false)
         ) { event ->
@@ -407,7 +425,7 @@ class Commands(val bot: Bot) {
                 .toKotlinDuration()).await()
         }
 
-        register(CommandData("tba", "Get information from The Blue Alliance about a team.")
+        register(slash("tba", "Get information from The Blue Alliance about a team.")
             .addOption(OptionType.INTEGER, "number", "The team number", true)
             .addOption(OptionType.INTEGER, "year", "The year", false)
             .addOption(OptionType.STRING, "event", "The event name", false)
@@ -438,41 +456,45 @@ class Commands(val bot: Bot) {
                     if (teamInfo.website != null) fields.add(Field("Website", teamInfo.website, false))
 
                     if (year != null && eventName == null) {
+                        val events = bot.theBlueAlliance.events(number.toInt(), year.toInt())
+                        fields.add(Field("Events", events.joinToString { it.shortName ?: it.name }, false))
                         // TODO: general team performance
                     } else if (year != null && eventName != null) {
-                        // 1d7ce
                         val eventObj = bot.theBlueAlliance.simpleEventByName(eventName, year.toInt())
                             ?: throw CommandException("Couldn't find event '$eventName'!")
                         val teamStatus = bot.theBlueAlliance.teamEventStatus(teamInfo.teamNumber, eventObj.key)
                             ?: throw CommandException("Couldn't find $number's performance at ${eventObj.name}!")
                         val matches = bot.theBlueAlliance.matches(number.toInt(), eventObj.key) ?: emptyList()
 
-                        hook.editOriginalEmbeds(
-                            embed(
-                                "$number at ${eventObj.name} in $year",
-                                content = listOf(
-                                    Field(
-                                        "Status",
-                                        teamStatus.overallStatusString
-                                            ?.replace("</?b>".toRegex(), "**")
-                                        , false)
-                                ),
-                                description = "```" + table(
-                                    arrayOf(
-                                        Row("R1", "R2", "R3", "B1", "B2", "B3", "Red", "Blue")
-                                    ) + matches.map {
-                                        val red = it.alliances!!.red.teamKeys.map { item -> item.removePrefix("frc") }
-                                        val blue = it.alliances.blue.teamKeys.map { item -> item.removePrefix("frc") }
-                                        val redWon = it.winningAlliance == "red"
-                                        val blueWon = it.winningAlliance == "blue"
-                                        Row(red[0], red[1], red[2], blue[0], blue[1], blue[2],
-                                            it.alliances.red.score.run { if (redWon) "*$this*" else toString() },
-                                            it.alliances.blue.score.run { if (blueWon) "*$this*" else toString() },
-                                        )
-                                    }
-                                ) + "```"
+                        val embed = embed(
+                            "$number at ${eventObj.name} in $year",
+                            content = listOf(
+                                Field(
+                                    "Status",
+                                    teamStatus.overallStatusString
+                                        ?.replace("</?b>".toRegex(), "**")
+                                    , false)
                             )
-                        ).await()
+                        )
+                        hook.editOriginal(Message("```\n" + table(
+                            arrayOf(Row("R1", "R2", "R3", "B1", "B2", "B3", "Red", "Blue"))
+                                    + matches.sortedBy { it.matchNumber }
+                                .map {
+                                    it.alliances!!
+                                    val red = it.alliances.red.teamKeys.map { item ->
+                                        item.removePrefix("frc").run { if (this == number.toString()) "$this*" else "$this " }
+                                    }
+                                    val blue = it.alliances.blue.teamKeys.map { item ->
+                                        item.removePrefix("frc").run { if (this == number.toString()) "$this*" else "$this " }
+                                    }
+                                    val redWon = it.winningAlliance == "red"
+                                    val blueWon = it.winningAlliance == "blue"
+                                    Row(red[0], red[1], red[2], blue[0], blue[1], blue[2],
+                                        it.alliances.red.score.run { if (redWon) "$this*" else "$this " },
+                                        it.alliances.blue.score.run { if (blueWon) "$this*" else "$this " },
+                                    )
+                            }
+                        ) + "```", embed)).await()
                         return@launch
                     }
 
@@ -488,6 +510,43 @@ class Commands(val bot: Bot) {
                     hook.editOriginalEmbeds((embed("Error", color = ERROR_COLOR, description = e.message))).await()
                 }
             }
+        }
+
+        register(slash("zebra", "Plots the Zebra Motionworks data from a team's autos at an event")
+            .addOption(OptionType.INTEGER, "team", "Team number", true)
+            .addOption(OptionType.INTEGER, "year", "The year to get data from", true)
+            .addOption(OptionType.STRING, "event", "The event to get data from", true)
+//            .addOption(OptionType.STRING, "match", "The match ")
+        ) { event ->
+            val hook = event.hook
+            event.deferReply().await()
+
+            val team = event.getOption("team")!!.asInt
+            val year = event.getOption("year")!!.asInt
+            val eventObj = bot.theBlueAlliance.eventByName(event.getOption("event")!!.asString, year) ?: throw CommandException("Event not found!  Try another name for it")
+
+            val drawn = bot.paths.renderAutos(team, year, eventObj.key) ?: throw CommandException("No data found!")
+
+            hook.editOriginalEmbeds(embed("$team's Autos at ${eventObj.shortName ?: eventObj.name}"))
+                .addFile(drawn, "autos.png")
+                .await()
+        }
+
+        register(slash("userinfo", "Gets info on a user")
+            .addOption(OptionType.USER, "user", "The user to get the information on", true)) { event ->
+            val user = event.getOption("user")!!.asUser
+            val member = event.getOption("user")!!.asMember
+
+            val fields = mutableListOf<Field>()
+            if (member != null) {
+                if (member.nickname != null) fields.add(Field("Nickname", member.nickname, false))
+                fields.add(Field("Permissions", member.permissions.joinToString(), false))
+                fields.add(Field("Server Join", "<t:${member.timeJoined.toInstant().epochSecond}>", false))
+            }
+
+            fields.add(Field("Account Creation", "<t:${user.timeCreated.toInstant().epochSecond}>", false))
+
+            event.replyEmbeds(embed(title = user.asTag, content = fields)).await()
         }
 
         registerAudioCommands(bot, this)

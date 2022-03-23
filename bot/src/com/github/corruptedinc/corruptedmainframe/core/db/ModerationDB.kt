@@ -47,7 +47,7 @@ class ModerationDB(private val database: ExposedDatabase) {
         return database.trnsctn {
             val msg = AutoRoleMessage.find { AutoRoleMessages.message eq message }.firstOrNull()?.id
                 ?: return@trnsctn null
-            AutoRole.find { (AutoRoles.message eq msg) and (AutoRoles.emote eq emote.name) }.firstOrNull()?.role
+            AutoRole.find { AutoRoles.message eq msg }.find { it.emote.run { if (startsWith(':')) this == ":${emote.name}:" else this == emote.name } }?.role
         }
     }
 

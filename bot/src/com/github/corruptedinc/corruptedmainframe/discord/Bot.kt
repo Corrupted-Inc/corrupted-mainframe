@@ -5,9 +5,11 @@ import com.github.corruptedinc.corruptedmainframe.audio.Audio
 import com.github.corruptedinc.corruptedmainframe.commands.Commands
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.commands.Leveling
+import com.github.corruptedinc.corruptedmainframe.commands.RobotPaths
 import com.github.corruptedinc.corruptedmainframe.commands.TheBlueAlliance
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.plugin.PluginLoader
+import com.github.corruptedinc.corruptedmainframe.utils.PathDrawer
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.injectKTX
 import dev.minn.jda.ktx.listener
@@ -18,7 +20,7 @@ import net.dv8tion.jda.api.entities.ChannelType
 import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
-import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent
@@ -49,11 +51,13 @@ class Bot(val config: Config) {
     ), this)
     val audio = Audio(this)
     val leveling = Leveling(this)
-    val buttonListeners = mutableListOf<(ButtonClickEvent) -> Unit>()
+    val buttonListeners = mutableListOf<(ButtonInteractionEvent) -> Unit>()
     val starboard = Starboard(this)
     val commands = Commands(this)
     val theBlueAlliance = TheBlueAlliance(config.blueAllianceToken, scope)
     private val plugins = PluginLoader(File("plugins"), this)
+    val pathDrawer = PathDrawer(this)
+    val paths = RobotPaths(this)
 
     companion object {
         /** Number of milliseconds between checking for expiring reminders. */
@@ -160,7 +164,7 @@ class Bot(val config: Config) {
             }
         }
 
-        jda.listener<ButtonClickEvent> { event ->
+        jda.listener<ButtonInteractionEvent> { event ->
             if (database.banned(event.user)) return@listener
             buttonListeners.forEach { it(event) }
         }

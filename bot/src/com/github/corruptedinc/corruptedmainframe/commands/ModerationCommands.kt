@@ -1,19 +1,33 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB
+import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoleMessage.Companion
+import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoleMessages
+import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoles
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
+import com.github.corruptedinc.corruptedmainframe.utils.biasedLevenshteinInsensitive
+import com.github.corruptedinc.corruptedmainframe.utils.levenshtein
 import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
 import dev.minn.jda.ktx.await
+import dev.minn.jda.ktx.interactions.Command
+import dev.minn.jda.ktx.listener
 import kotlinx.coroutines.delay
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.TextChannel
+import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent
+import net.dv8tion.jda.api.events.interaction.component.SelectMenuInteractionEvent
+import net.dv8tion.jda.api.exceptions.PermissionException
 import net.dv8tion.jda.api.interactions.commands.OptionType
-import net.dv8tion.jda.api.interactions.commands.build.CommandData
+import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
+import net.dv8tion.jda.api.interactions.commands.build.OptionData.MAX_CHOICES
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
 import net.dv8tion.jda.api.utils.MiscUtil
 import net.dv8tion.jda.api.utils.TimeUtil
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.deleteWhere
 import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -24,7 +38,7 @@ private const val PURGE_DELAY = 2000L
 
 fun registerCommands(bot: Bot) {
     bot.commands.register(
-        CommandData("purge", "Purges messages")
+        slash("purge", "Purges messages")
         .addOption(OptionType.INTEGER, "count", "The number of messages to purge", true)) { event ->
 
         val count = (event.getOption("count")?.asLong ?: throw CommandException("Invalid number")).toInt()
@@ -66,7 +80,7 @@ fun registerCommands(bot: Bot) {
         }
     }
 
-    bot.commands.register(CommandData("stats", "Shows bot statistics")) { event ->
+    bot.commands.register(slash("stats", "Shows bot statistics")) { event ->
         // TODO daily commands executed, new servers, etc
 
         val builder = EmbedBuilder()
@@ -83,6 +97,7 @@ fun registerCommands(bot: Bot) {
                 Uptime: ${Duration.between(bot.startTime, Instant.now()).toHumanReadable()}
                 Git: ${bot.config.gitUrl}
                 Invite: [Admin invite](${Commands.adminInvite(id)})  [basic permissions](${Commands.basicInvite(id)})
+                Commands Run Today: ${bot.database.commandsRun(Instant.now().minus(24, ChronoUnit.HOURS), Instant.now())}
                 **Guild Info**
                 Owner: ${event.guild?.owner?.asMention}
             """.trimIndent())
@@ -90,7 +105,7 @@ fun registerCommands(bot: Bot) {
     }
 
     bot.commands.register(
-        CommandData("ban", "Ban a user")
+        slash("ban", "Ban a user")
         .addOption(OptionType.USER, "user", "The user to ban", true)) { event ->
         bot.commands.assertPermissions(event, Permission.BAN_MEMBERS)
         val user = event.getOption("user")?.asUser
@@ -101,7 +116,7 @@ fun registerCommands(bot: Bot) {
     }
 
     bot.commands.register(
-        CommandData("unban", "Unban a user")
+        slash("unban", "Unban a user")
         .addOption(OptionType.USER, "user", "The user to unban", true)) { event ->
         bot.commands.assertPermissions(event, Permission.BAN_MEMBERS)
         val user = event.getOption("user")?.asUser ?: throw CommandException("Failed to find user!")
@@ -111,7 +126,7 @@ fun registerCommands(bot: Bot) {
     }
 
     bot.commands.register(
-        CommandData("kick", "Kick a user")
+        slash("kick", "Kick a user")
         .addOption(OptionType.USER, "user", "The user to kick", true)) { event ->
         bot.commands.assertPermissions(event, Permission.KICK_MEMBERS)
         val user = event.getOption("user")?.asUser
@@ -121,53 +136,216 @@ fun registerCommands(bot: Bot) {
         event.replyEmbeds(Commands.embed("Kicked", description = "Kicked ${user.asMention}")).await()
     }
 
-    bot.commands.register(CommandData("reactionrole", "Reactions are specified with the format " +
-            "'\uD83D\uDC4D-rolename, \uD83D\uDCA5-otherrolename'.")
-        .addOption(OptionType.STRING, "message", "Message link", true)
-        .addOption(OptionType.STRING, "reactions", "Reactions", true)) { event ->
+    bot.commands.register(slash("reactionrole", "Manage reaction role messages")
+        .addSubcommands(
+            SubcommandData("add", "Adds a reaction role.")
+                .addOption(OptionType.STRING, "url", "Message URL", true)
+                .addOption(OptionType.STRING, "reactions", "The emote to reaction mapping in \uD83D\uDC4D-rolename, \uD83D\uDCA5-otherrolename format", true, true),
+            SubcommandData("list", "Lists the current reaction roles"),
+            SubcommandData("delete", "Removes the autorole from a message")
+                .addOption(OptionType.STRING, "url", "Message URL", true),
+            SubcommandData("removeoption", "Removes a specific role from being awarded by a reaction role message")
+                .addOption(OptionType.STRING, "url", "Message URL", true)
+                .addOption(OptionType.ROLE, "role", "Role name", true),
+            SubcommandData("addoption", "Adds an option to an existing reaction role message")
+                .addOption(OptionType.STRING, "url", "Message URL", true)
+                .addOption(OptionType.STRING, "emote", "The emote to add", true)
+                .addOption(OptionType.ROLE, "role", "The role to add", true)
+        )
+    ) { event ->
+        when (event.subcommandName) {
+            "add" -> {
+                val reactionsMap = event.getOption("reactions")!!.asString
+                    .removeSurrounding("\"")
+                    .replace(", ", ",")
+                    .split(",")
 
-        bot.commands.assertAdmin(event)
+                    // Split by colon into emote and role name, stripping spaces from the start of the latter
+                    .map { Pair(
+                        it.substringBeforeLast("-"),
+                        it.substringAfterLast("-").dropWhile { c -> c == ' ' })
+                    }
 
-        val reactionsMap = event.getOption("reactions")!!.asString.removeSurrounding("\"").replace(", ", ",").split(",")
-            // Split by colon into emote and role name, stripping spaces from the start of the latter
-            .map { Pair(
-                it.substringBeforeLast("-"),
-                it.substringAfterLast("-").dropWhile { c -> c == ' ' })
+                    // Retrieve all the roles
+                    .map {
+                        event.guild?.getRolesByName(it.second, true)
+                            ?.firstOrNull()
+                            ?.run { Pair(it.first, this) }
+                            ?: throw CommandException("Couldn't find role '${it.second}'!")
+                    }
+                    .filter { event.member?.canInteract(it.second) == true }  // Prevent privilege escalation
+                    .associate { Pair(it.first, it.second.idLong) }  // Convert to map for use by the database
+
+                val link = event.getOption("url")!!.asString
+                val messageId = link.substringAfterLast("/")
+                val channelId = link.removeSuffix("/$messageId").substringAfterLast("/").toLongOrNull()
+                    ?: throw CommandException("Invalid message link")
+                val channel = event.guild?.getTextChannelById(channelId)
+                val msg = channel?.retrieveMessageById(
+                    messageId.toLongOrNull()
+                        ?: throw CommandException("Invalid message link")
+                )?.await() ?: throw CommandException("Invalid message link")
+
+                bot.database.moderationDB.addAutoRole(msg, reactionsMap)
+
+                for (reaction in reactionsMap) {
+                    if (reaction.key.startsWith(":")) {
+                        // sketchy
+                        msg.addReaction(event.guild!!.getEmotesByName(
+                            reaction.key.removeSurrounding(":"), false).first()
+                        ).await()
+                    } else {
+                        msg.addReaction(reaction.key).await()
+                    }
+                }
             }
+            "list" -> {
+                // don't do expensive API calls within a transaction
+                val output = mutableListOf<Pair<Long, MutableList<Pair<String, Long>>>>()
+                bot.database.trnsctn {
+                    val g = bot.database.guild(event.guild!!)
+                    for (item in g.autoRoles) {
+                        val l = mutableListOf<Pair<String, Long>>()
+                        output.add(Pair(item.message, l))
+                        for (role in item.roles) {
+                            l.add(Pair(role.emote, role.role))
+                        }
+                    }
+                }
 
-            // Retrieve all the roles
-            .map {
-                event.guild?.getRolesByName(it.second, true)
-                    ?.firstOrNull()?.run { Pair(it.first, this) } ?: throw CommandException("Couldn't find role '${it.second}'!")
+                val fields = mutableListOf<MessageEmbed.Field>()
+
+                for (item in output) {
+                    val v = StringBuilder()
+
+                    for (role in item.second) {
+                        v.append(role.first)
+                        v.append(" - ")
+                        v.appendLine(event.guild!!.getRoleById(role.second)!!.name)
+                    }
+
+                    fields.add(
+                        MessageEmbed.Field(event.guild!!.getTextChannelById(item.first)!!.name,
+                            v.toString(), false)
+                    )
+                }
+
+                event.replyEmbeds(Commands.embed("Reaction Roles", content = fields)).await()
             }
-            .filter { event.member?.canInteract(it.second) == true }  // Prevent privilege escalation
-            .associate { Pair(it.first, it.second.idLong) }  // Convert to map for use by the database
+            "delete" -> {
+                bot.commands.assertAdmin(event)
 
-        val link = event.getOption("message")!!.asString
-        val messageId = link.substringAfterLast("/")
-        val channelId = link.removeSuffix("/$messageId").substringAfterLast("/").toLongOrNull()
-            ?: throw CommandException("Invalid message link")
-        val channel = event.guild?.getTextChannelById(channelId)
-        val msg = channel?.retrieveMessageById(
-            messageId.toLongOrNull()
-                ?: throw CommandException("Invalid message link")
-        )?.await() ?: throw CommandException("Invalid message link")
+                val messageId = event.getOption("url")!!.asString.substringAfterLast("/").toLong()
 
-        bot.database.moderationDB.addAutoRole(msg, reactionsMap)
+                bot.database.trnsctn {
+                    val item = ModerationDB.AutoRoleMessage.find { AutoRoleMessages.message eq messageId }.firstOrNull()
+                        ?: throw CommandException("No reaction role found!")
+                    AutoRoles.deleteWhere { AutoRoles.message eq item.id }
+                    item.delete()
+                }
 
-        for (reaction in reactionsMap) {
-            msg.addReaction(reaction.key).await()
+                event.replyEmbeds(Commands.embed("Successfully removed"))
+            }
+            "removeoption" -> {
+                bot.commands.assertAdmin(event)
+
+                val messageId = event.getOption("url")!!.asString.substringAfterLast("/").toLongOrNull()
+                    ?: throw CommandException("Invalid link!")
+
+                val role = event.getOption("role")!!.asRole.idLong
+
+                val c = bot.database.trnsctn {
+                    val item = ModerationDB.AutoRoleMessage.find { AutoRoleMessages.message eq messageId }.firstOrNull()
+                        ?: throw CommandException("No reaction role found!")
+                    AutoRoles.deleteWhere { (AutoRoles.message eq item.id) and (AutoRoles.role eq role) }
+                }
+
+                event.replyEmbeds(Commands.embed("Removed $c role${if (c == 1) "" else "s"}"))
+            }
+            "addoption" -> {
+                TODO("AAAA")
+            }
         }
-
-        event.replyEmbeds(
-            Commands.embed("Successfully added ${reactionsMap.size} reaction roles:",
-                content = reactionsMap.map {
-                    MessageEmbed.Field(it.key, event.guild?.getRoleById(it.value)?.name, false)
-                })
-        ).await()
     }
 
-    bot.commands.register(CommandData("starboard", "Manage the starboard").addSubcommands(
+    bot.jda.listener<CommandAutoCompleteInteractionEvent> { event ->
+        if (event.name != "reactionrole") return@listener
+        if (event.subcommandName != "add") return@listener
+
+        if (event.focusedOption.name == "reactions") {
+            val typed = event.focusedOption.value.substringAfterLast(',').removePrefix(" ")
+            if (typed.isEmpty()) {
+//                event.
+            } else {
+                if (typed.contains('-')) {
+                    val typedRole = typed.substringAfterLast('-').removeSuffix(" ")
+                    val roles = event.guild!!.roles.sortedBy { biasedLevenshteinInsensitive(typedRole, it.name) }
+                    if (roles.firstOrNull()?.name?.lowercase() == typedRole) {
+                        event.replyChoiceStrings("", ", ").await()
+                        return@listener
+                    }
+                    event.replyChoiceStrings(roles.take(MAX_CHOICES).map { it.name }).await()
+                } else {
+                    event.replyChoice("-", "-").await()
+                }
+            }
+        }
+    }
+
+//    bot.commands.register(slash("reactionrole", "Reactions are specified with the format " +
+//            "'\uD83D\uDC4D-rolename, \uD83D\uDCA5-otherrolename'.")
+//        .addOption(OptionType.STRING, "message", "Message link", true)
+//        .addOption(OptionType.STRING, "reactions", "Reactions", true)) { event ->
+//
+//        bot.commands.assertAdmin(event)
+//
+//        event.deferReply().await()
+//
+//        val reactionsMap = event.getOption("reactions")!!.asString.removeSurrounding("\"").replace(", ", ",").split(",")
+//            // Split by colon into emote and role name, stripping spaces from the start of the latter
+//            .map { Pair(
+//                it.substringBeforeLast("-"),
+//                it.substringAfterLast("-").dropWhile { c -> c == ' ' })
+//            }
+//
+//            // Retrieve all the roles
+//            .map {
+//                event.guild?.getRolesByName(it.second, true)
+//                    ?.firstOrNull()?.run { Pair(it.first, this) } ?: throw CommandException("Couldn't find role '${it.second}'!")
+//            }
+//            .filter { event.member?.canInteract(it.second) == true }  // Prevent privilege escalation
+//            .associate { Pair(it.first, it.second.idLong) }  // Convert to map for use by the database
+//
+//        val link = event.getOption("message")!!.asString
+//        val messageId = link.substringAfterLast("/")
+//        val channelId = link.removeSuffix("/$messageId").substringAfterLast("/").toLongOrNull()
+//            ?: throw CommandException("Invalid message link")
+//        val channel = event.guild?.getTextChannelById(channelId)
+//        val msg = channel?.retrieveMessageById(
+//            messageId.toLongOrNull()
+//                ?: throw CommandException("Invalid message link")
+//        )?.await() ?: throw CommandException("Invalid message link")
+//
+//        bot.database.moderationDB.addAutoRole(msg, reactionsMap)
+//
+//        for (reaction in reactionsMap) {
+//            if (reaction.key.startsWith(":")) {
+//                // sketchy
+//                msg.addReaction(event.guild!!.getEmotesByName(reaction.key.removeSurrounding(":"), false).first()).await()
+//            } else {
+//                msg.addReaction(reaction.key).await()
+//            }
+//        }
+//
+//        event.hook.editOriginalEmbeds(
+//            Commands.embed("Successfully added ${reactionsMap.size} reaction roles:",
+//                content = reactionsMap.map {
+//                    MessageEmbed.Field(it.key, event.guild?.getRoleById(it.value)?.name, false)
+//                })
+//        ).await()
+//    }
+
+    bot.commands.register(slash("starboard", "Manage the starboard").addSubcommands(
         SubcommandData("setup", "Set up or modify the starboard")
             .addOption(OptionType.CHANNEL, "channel", "The starboard channel", true)
             .addOption(OptionType.STRING, "emote", "The starboard emote", true)
@@ -248,6 +426,46 @@ fun registerCommands(bot: Bot) {
                 }
                 event.replyEmbeds(Commands.embed("Starboard", description = "Successfully updated threshold.")).await()
             }
+        }
+    }
+
+    bot.commands.register(slash("addrole", "Creates a role")
+        .addOption(OptionType.STRING, "name", "Role name", true)
+    ) { event ->
+        bot.commands.assertAdmin(event)
+
+        val role = try {
+            event.guild!!.createRole().setName(event.getOption("name")!!.asString).await()
+        } catch (ignored: PermissionException) {
+            throw CommandException("Not enough permissions!")
+        }.idLong
+
+        event.replyEmbeds(Commands.embed("Role Created", description = "id: $role")).await()
+    }
+
+    bot.commands.register(slash("say", "Says something in a channel.")
+        .addOption(OptionType.STRING, "title", "The title", true)
+        .addOption(OptionType.STRING, "content", "The thing to say", true)
+        .addOption(OptionType.CHANNEL, "channel", "The channel to send it in", true)
+    ) { event ->
+        val title = event.getOption("title")!!.asString
+        val content = event.getOption("content")!!.asString
+        val channel = event.getOption("channel")!!.asMessageChannel
+
+        bot.commands.assertAdmin(event)
+
+        channel!!.sendMessageEmbeds(Commands.embed(title, description = content, footer = "Requested by <@${event.user.id}>", stripPings = false)).await()
+        event.replyEmbeds(Commands.embed("Sent")).await()
+    }
+
+    bot.commands.register(slash("test", "this is a test")
+        .addOption(OptionType.STRING, "aaa", "AAAAAA", true, true)) { event ->
+        event.reply(event.getOption("aaa")!!.asString).await()
+    }
+
+    bot.jda.listener<CommandAutoCompleteInteractionEvent> { event ->
+        if (event.name == "test") {
+            event.replyChoiceStrings(event.focusedOption.value + "1", event.focusedOption.value + "2", event.focusedOption.value + "3").await()
         }
     }
 }

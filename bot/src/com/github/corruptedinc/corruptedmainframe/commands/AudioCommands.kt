@@ -19,11 +19,10 @@ import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.audio.hooks.ConnectionListener
 import net.dv8tion.jda.api.audio.hooks.ConnectionStatus
 import net.dv8tion.jda.api.entities.*
-import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import net.dv8tion.jda.api.interactions.commands.OptionType
-import net.dv8tion.jda.api.interactions.commands.build.CommandData
-import net.dv8tion.jda.api.interactions.components.Button
-import kotlin.coroutines.coroutineContext
+import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
+import net.dv8tion.jda.api.interactions.components.buttons.Button
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.random.Random
@@ -64,7 +63,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         return embed("Successfully added ${loaded.size} items to the queue")
     }
 
-    commands.register(CommandData("play", "Play a song")
+    commands.register(slash("play", "Play a song")
         .addOption(OptionType.STRING, "source", "The URL/search term", true)) { event ->
         val channel = event.member?.voiceState?.channel
             ?: throw CommandException("You must be in a voice channel to use this command!")
@@ -119,7 +118,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         event.replyEmbeds(embed("Playing ${first?.title}", url = first?.uri)).complete()
     }
 
-    commands.register(CommandData("pause", "Pause the current song")) { event ->
+    commands.register(slash("pause", "Pause the current song")) { event ->
         val state = state(event.member) ?: nothingPlaying(event.member)
         validateInChannel(event.member, state)
 
@@ -127,7 +126,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         event.replyEmbeds(embed("Paused '${state.currentlyPlayingTrack?.info?.title}'")).complete()
     }
 
-    commands.register(CommandData("resume", "Unpause the current song")) { event ->
+    commands.register(slash("resume", "Unpause the current song")) { event ->
         val state = state(event.member) ?: nothingPlaying(event.member)
         validateInChannel(event.member, state)
 
@@ -135,7 +134,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         event.replyEmbeds(embed("Unpaused '${state.currentlyPlayingTrack?.info?.title}'")).complete()
     }
 
-    commands.register(CommandData("volume", "Set the volume")
+    commands.register(slash("volume", "Set the volume")
         .addOption(OptionType.INTEGER, "percentage", "The volume percentage", true)) { event ->
             val state = state(event.member) ?: nothingPlaying(event.member)
             validateInChannel(event.member, state)
@@ -146,7 +145,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
             event.replyEmbeds(embed("Set volume to $vol%")).complete()
         }
 
-    commands.register(CommandData("stop", "Stop playing")) { event ->
+    commands.register(slash("stop", "Stop playing")) { event ->
         val state = state(event.member) ?: nothingPlaying(event.member)
         validateInChannel(event.member, state)
         state.destroy()
@@ -154,7 +153,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         event.replyEmbeds(embed("Stopped playing")).complete()
     }
 
-    commands.register(CommandData("skip", "Skip to the next song")) { event ->
+    commands.register(slash("skip", "Skip to the next song")) { event ->
         val state = state(event.member) ?: nothingPlaying(event.member)
 
         validateInChannel(event.member, state)
@@ -166,7 +165,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         }
     }
 
-    commands.register(CommandData("previous", "Skip to the previous song")) { event ->
+    commands.register(slash("previous", "Skip to the previous song")) { event ->
         val state = state(event.member) ?: nothingPlaying(event.member)
 
         validateInChannel(event.member, state)
@@ -178,7 +177,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         }
     }
 
-    commands.register(CommandData("shuffle", "Shuffle the playlist")) { event ->
+    commands.register(slash("shuffle", "Shuffle the playlist")) { event ->
         val state = state(event.member) ?: nothingPlaying(event.member)
 
         validateInChannel(event.member, state)
@@ -188,7 +187,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         event.replyEmbeds(embed("Shuffling")).complete()
     }
 
-    commands.register(CommandData("queue", "Show the queue")) { event ->
+    commands.register(slash("queue", "Show the queue")) { event ->
         val state = state(event.member) ?: nothingPlaying(event.member)
 
         validateInChannel(event.member, state)
@@ -211,7 +210,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         }
     }
 
-    commands.register(CommandData("remove", "Remove an item from the queue")
+    commands.register(slash("remove", "Remove an item from the queue")
         .addOption(OptionType.INTEGER, "index", "The number of the item to remove", true)) { event ->
         val state = state(event.member) ?: nothingPlaying(event.member)
 
@@ -231,7 +230,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         event.replyEmbeds(embed("Successfully removed '${info?.title}' from the playlist.")).complete()
     }
 
-    commands.register(CommandData("fastforward", "Skip forward in the current song")
+    commands.register(slash("fastforward", "Skip forward in the current song")
         .addOption(OptionType.INTEGER, "seconds", "The number of seconds to skip", true)) { event ->
 
         val state = state(event.member) ?: nothingPlaying(event.member)
@@ -245,7 +244,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         event.replyEmbeds(embed("Skipping $seconds seconds...")).complete()
     }
 
-    commands.register(CommandData("playing", "Show what is currently playing")) { event ->
+    commands.register(slash("playing", "Show what is currently playing")) { event ->
         val state = state(event.member) ?: nothingPlaying(event.member)
         val length = BAR_LENGTH
         val timeFraction = (state.progress ?: 0) / (state.currentlyPlayingTrack?.duration?.toDouble() ?: 1.0)
@@ -274,11 +273,11 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
             .complete().idLong
         val channelId = event.channel.idLong
 
-        val listener = listener@ { buttonEvent: ButtonClickEvent ->
-            if (buttonEvent.button?.id?.endsWith(id.toString()) == true) {
+        val listener = listener@ { buttonEvent: ButtonInteractionEvent ->
+            if (buttonEvent.button.id?.endsWith(id.toString()) == true) {
                 validateInChannel(buttonEvent.member ?: return@listener, state)
 
-                when (buttonEvent.button?.id?.removeSuffix(id.toString())) {
+                when (buttonEvent.button.id?.removeSuffix(id.toString())) {
                     "prev"  -> bot.scope.launch { state.previous() }
                     "stop"  -> state.destroy()
                     "pause" -> state.paused = !state.paused
@@ -299,7 +298,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         }
     }
 
-    commands.register(CommandData("seek", "Seeks to a time in the song.")
+    commands.register(slash("seek", "Seeks to a time in the song.")
         .addOption(OptionType.STRING, "time", "The time to seek to")
     ) { event ->
         val state = state(event.member) ?: nothingPlaying(event.member)

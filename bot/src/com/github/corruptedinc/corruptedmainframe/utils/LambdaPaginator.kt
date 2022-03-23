@@ -9,9 +9,10 @@ import net.dv8tion.jda.api.exceptions.ErrorHandler
 import net.dv8tion.jda.api.hooks.EventListener
 import net.dv8tion.jda.api.hooks.SubscribeEvent
 import net.dv8tion.jda.api.interactions.Interaction
+import net.dv8tion.jda.api.interactions.commands.SlashCommandInteraction
 import net.dv8tion.jda.api.interactions.components.ActionRow
-import net.dv8tion.jda.api.interactions.components.Button
-import net.dv8tion.jda.api.interactions.components.ButtonInteraction
+import net.dv8tion.jda.api.interactions.components.buttons.Button
+import net.dv8tion.jda.api.interactions.components.buttons.ButtonInteraction
 import net.dv8tion.jda.api.requests.ErrorResponse
 import org.apache.commons.codec.binary.Base64
 import java.security.SecureRandom
@@ -107,7 +108,7 @@ fun TextChannel.lambdaPaginator(size: Long, lambda: (Long) -> MessageEmbed) {
     sendMessageEmbeds(lambda(0)).setActionRow(paginator.controls.components).complete()
 }
 
-fun Interaction.replyLambdaPaginator(size: Long, lambda: (Long) -> MessageEmbed) {
+fun SlashCommandInteraction.replyLambdaPaginator(size: Long, lambda: (Long) -> MessageEmbed) {
     val paginator = paginator(size, lambda, jda)
     replyEmbeds(lambda(0)).addActionRows(listOf(paginator.controls)).complete()
 }

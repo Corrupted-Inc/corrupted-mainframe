@@ -1,5 +1,7 @@
 package com.github.corruptedinc.corruptedmainframe.utils
 
+import java.nio.file.Files
+import java.nio.file.Path
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.time.Duration
@@ -47,6 +49,34 @@ fun levenshtein(lhs : CharSequence, rhs : CharSequence) : Int {
     }
 
     return cost[lhsLength - 1]
+}
+
+fun biasedLevenshtein(x: String, y: String): Float {
+    val dp = Array(x.length + 1) { IntArray(y.length + 1) }
+    for (i in 0..x.length) {
+        for (j in 0..y.length) {
+            if (i == 0) {
+                dp[i][j] = j
+            } else if (j == 0) {
+                dp[i][j] = i
+            } else {
+                dp[i][j] = (dp[i - 1][j - 1]
+                        + if (x[i - 1] == y[j - 1]) 0 else 1).coerceAtMost(dp[i - 1][j] + 1)
+                    .coerceAtMost(dp[i][j - 1] + 1)
+            }
+        }
+    }
+    val output = dp[x.length][y.length]
+    if (y.startsWith(x) || x.startsWith(y)) {
+        return output / 3f
+    }
+    return if (y.contains(x) || x.contains(y)) {
+        output / 1.5f
+    } else output.toFloat()
+}
+
+fun biasedLevenshteinInsensitive(x: String, y: String): Float {
+    return biasedLevenshtein(x.lowercase(Locale.getDefault()), y.lowercase(Locale.getDefault()))
 }
 
 fun String.containsAny(items: Iterable<String>) = items.any { it in this }
@@ -101,3 +131,17 @@ fun String.date(): Date? {
         null
     }
 }
+
+// from https://mkyong.com/java/how-to-delete-directory-in-java/ why isn't this built in
+fun deleteDirectory(path: Path) {
+    // read java doc, Files.walk need close the resources.
+    // try-with-resources to ensure that the stream's open directories are closed
+    Files.walk(path).use {
+        it.sorted(Comparator.reverseOrder())
+        .forEach(Files::delete)
+    }
+}
+
+typealias DoubleRange = ClosedFloatingPointRange<Double>
+
+data class RGB(val r: UByte, val g: UByte, val b: UByte, val a: UByte = 255U)

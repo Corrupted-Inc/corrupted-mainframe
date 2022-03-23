@@ -1,22 +1,20 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
-import com.beust.klaxon.Json
-import com.beust.klaxon.Klaxon
+import com.beust.klaxon.*
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.LoadingCache
-import com.github.corruptedinc.corruptedmainframe.utils.containsAny
 import com.github.corruptedinc.corruptedmainframe.utils.levenshtein
 import kotlinx.coroutines.*
 import org.apache.http.client.methods.HttpGet
 import org.apache.http.impl.client.HttpClientBuilder
 import java.net.URI
-import java.util.*
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
 
+// TODO: coroutines
 class TheBlueAlliance(private val token: String, private val scope: CoroutineScope) {
     private val client = HttpClientBuilder.create().build()
-    private val klaxon = Klaxon()
+    val klaxon = Klaxon()
 
     private inline fun <reified T> get(path: String): T? {
         val req = HttpGet()
@@ -140,8 +138,8 @@ class TheBlueAlliance(private val token: String, private val scope: CoroutineSco
     fun event(key: String) =
         get<Event>("/event/$key")
 
-    fun matches(teamNumber: Int, event: String) =
-        getArray<Match>("/team/frc$teamNumber/event/$event/matches")
+    fun matches(teamNumber: Int, eventKey: String) =
+        getArray<Match>("/team/frc$teamNumber/event/$eventKey/matches")
 
     private fun biasedLevenshtein(a: String, b: String): Double {
         var l = levenshtein(a, b).toDouble() / max(a.length, b.length)
@@ -228,6 +226,8 @@ class TheBlueAlliance(private val token: String, private val scope: CoroutineSco
         @Json("actual_time") val actualTime: Long? = null,
         @Json("predicted_time") val predictedTime: Long? = null,
         @Json("post_result_time") val postResultTime: Long? = null,
+        // breaks for non-2022 years
+//        @Json("score_breakdown") val scoreBreakdown: MatchScoreBreakdown2022? = null
     ) {
         data class Alliances(
             val red: Alliance,
@@ -239,4 +239,86 @@ class TheBlueAlliance(private val token: String, private val scope: CoroutineSco
             @Json("team_keys") val teamKeys: List<String>
         )
     }
+
+    fun events(teamNumber: Int, year: Int) =
+        getArray<String>("/team/frc$teamNumber/events/$year/keys")?.mapNotNull { event(it) } ?: emptyList()
+
+    data class MatchScoreBreakdown2022(
+        val red: MatchScoreBreakdown2022Alliance,
+        val blue: MatchScoreBreakdown2022Alliance
+    )
+
+    data class MatchScoreBreakdown2022Alliance(
+        val taxiRobot1: String,  // enum, either "Yes" or "No"
+        val endgameRobot1: String,  // enum, "Traversal", "High", "Mid", "Low", "None"
+        val taxiRobot2: String,  // enum, either "Yes" or "No"
+        val endgameRobot2: String,  // enum, "Traversal", "High", "Mid", "Low", "None"
+        val taxiRobot3: String,  // enum, either "Yes" or "No"
+        val endgameRobot3: String,  // enum, "Traversal", "High", "Mid", "Low", "None"
+
+        // AUTO
+        // lower
+        val autoCargoLowerNear: Int,
+        val autoCargoLowerFar: Int,
+
+        val autoCargoLowerBlue: Int,
+        val autoCargoLowerRed: Int,
+
+        // upper
+        val autoCargoUpperNear: Int,
+        val autoCargoUpperFar: Int,
+
+        val autoCargoUpperBlue: Int,
+        val autoCargoUpperRed: Int,
+
+        val autoCargoTotal: Int,
+
+        // TELEOP
+        val teleopCargoLowerNear: Int,
+        val teleopCargoLowerFar: Int,
+
+        val teleopCargoLowerBlue: Int,
+        val teleopCargoLowerRed: Int,
+
+        val teleopCargoUpperNear: Int,
+        val teleopCargoUpperFar: Int,
+
+        val teleopCargoUpperBlue: Int,
+        val teleopCargoUpperRed: Int,
+
+        val teleopCargoTotal: Int,
+
+        val matchCargoTotal: Int,
+        val autoTaxiPoints: Int,
+        val autoCargoPoints: Int,
+        val autoPoints: Int,
+        val quintetAchieved: Boolean,
+        val teleopCargoPoints: Int,
+        val endgamePoints: Int,
+        val teleopPoints: Int,
+        val cargoBonusRankingPoint: Boolean,
+        val hangarBonusRankingPoint: Boolean,
+        val foulCount: Int,
+        val techFoulCount: Int,
+        val adjustPoints: Int,
+        val foulPoints: Int,
+        val rp: Int,
+        val totalPoints: Int
+    )
+
+    data class Zebra(
+        val key: String,
+        val times: List<Double>,
+        val alliances: RedBlueZebra
+    ) {
+        data class RedBlueZebra(val red: List<ZebraTeam>, val blue: List<ZebraTeam>)
+
+        data class ZebraTeam(
+            @Json("team_key") val teamKey: String,
+            val xs: List<Double?>,
+            val ys: List<Double?>
+        )
+    }
+
+    fun zebra(match: Match) = get<Zebra>("/match/${match.key}/zebra_motionworks")
 }

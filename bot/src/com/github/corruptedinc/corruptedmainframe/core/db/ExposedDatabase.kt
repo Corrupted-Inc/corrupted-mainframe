@@ -1,5 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.core.db
 
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.CommandRuns.index
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import net.dv8tion.jda.api.entities.*
 import org.jetbrains.exposed.dao.LongEntity
@@ -8,12 +9,17 @@ import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.javatime.datetime
+import org.jetbrains.exposed.sql.javatime.time
+import org.jetbrains.exposed.sql.javatime.timestamp
 import org.jetbrains.exposed.sql.transactions.transaction
+import java.io.DataInputStream
+import java.time.Instant
 import java.time.LocalDateTime
 
 class ExposedDatabase(val db: Database, bot: Bot) {
     val audioDB = AudioDB(this, bot)
     val moderationDB = ModerationDB(this)
+    val frcDB = FRCDB(this, bot)
 
     init {
         trnsctn {
@@ -26,7 +32,9 @@ class ExposedDatabase(val db: Database, bot: Bot) {
                 *audioDB.tables(),
                 Points,
                 Reminders,
-                StarredMessages
+                StarredMessages,
+                CommandRuns,
+                *frcDB.tables()
             )
         }
     }
@@ -38,7 +46,7 @@ class ExposedDatabase(val db: Database, bot: Bot) {
     }
 
     object GuildMs : LongIdTable(name = "guilds") {
-        val discordId = long("discord_id").index(isUnique = true)
+        val discordId = long("discord_id").uniqueIndex()
         val prefix = varchar("prefix", MAX_PREFIX_LENGTH)
         val currentlyIn = bool("currently_in").default(true)
         val starboardChannel = long("starboard_channel").nullable()
@@ -57,10 +65,12 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         var starboardReaction  by GuildMs.starboardReaction
         var levelsEnabled      by GuildMs.levelsEnabled
         val starredMessages    by StarredMessage.referrersOn(StarredMessages.guild)
+        val crawlJobs          by ImageHashJob.referrersOn(ImageHashJobs.guild)
+        val autoRoles          by ModerationDB.AutoRoleMessage.referrersOn(ModerationDB.AutoRoleMessages.guild)
     }
 
     object UserMs : LongIdTable(name = "users") {
-        val discordId = long("discord_id").index(isUnique = true)
+        val discordId = long("discord_id").uniqueIndex()
         val botAdmin  = bool("admin")
         val banned    = bool("banned").default(false)
         val timezone  = text("timezone").default("UTC")
@@ -78,7 +88,7 @@ class ExposedDatabase(val db: Database, bot: Bot) {
     }
 
     object Points : LongIdTable(name = "points") {
-        val user   = reference("user", UserMs)
+        val user   = reference("user", UserMs).index()
         val guild  = reference("guild", GuildMs)
         val pnts = double("points")
         val popups = bool("popups").default(true)
@@ -102,7 +112,7 @@ class ExposedDatabase(val db: Database, bot: Bot) {
     }
 
     object Reminders : LongIdTable(name = "reminders") {
-        val user = reference("user", UserMs)
+        val user = reference("user", UserMs).index()
         val channelId = long("channelid")
         val time = datetime("time")
         val text = varchar("text", VARCHAR_MAX_LENGTH)
@@ -117,7 +127,7 @@ class ExposedDatabase(val db: Database, bot: Bot) {
     }
 
     object StarredMessages : LongIdTable(name = "starred_messages") {
-        val guild = reference("guild", GuildMs)
+        val guild = reference("guild", GuildMs).index()
         val messageID = long("message_id")
     }
 
@@ -127,14 +137,71 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         var messageID by StarredMessages.messageID
     }
 
+    object CommandRuns : LongIdTable(name = "command_runs") {
+        val guild = reference("guild", GuildMs)
+        val timestamp = timestamp("timestamp")
+        val user = reference("user", UserMs)
+        val command = varchar("command", VARCHAR_MAX_LENGTH)
+        val millis = long("millis")
+    }
+
+    class CommandRun(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<CommandRun>(CommandRuns)
+
+        var guild     by CommandRuns.guild
+        var timestamp by CommandRuns.timestamp
+        var user      by CommandRuns.user
+        var command   by CommandRuns.command
+        var millis    by CommandRuns.millis
+    }
+
+    object ImageHashes : LongIdTable(name = "image_hashes") {
+        val guild = reference("guild", GuildMs)
+        val channel = long("channel")
+        val message = long("message")
+        @OptIn(ExperimentalUnsignedTypes::class)
+        val hash = ulong("hash").index()
+        val version = short("version").default(0)
+        val embedNumber = byte("embed_number")
+    }
+
+    class ImageHash(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<ImageHash>(ImageHashes)
+
+        var guild       by ImageHashes.guild
+        var channel     by ImageHashes.channel
+        var message     by ImageHashes.message
+        var hash        by ImageHashes.hash.index()
+        var version     by ImageHashes.version
+        var embedNumber by ImageHashes.embedNumber
+    }
+
+    object ImageHashJobs : LongIdTable(name = "image_hash_jobs") {
+        val guild = reference("guild", GuildMs).index()
+        val channel = long("channel").index()
+        val lastMessage = long("last_message")
+        val done = bool("done")
+    }
+
+    class ImageHashJob(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<ImageHashJob>(ImageHashJobs)
+
+        var guild       by ImageHashJobs.guild
+        var channel     by ImageHashJobs.channel
+        var lastMessage by ImageHashJobs.lastMessage
+        var done        by ImageHashJobs.done
+    }
+
     fun user(user: User) = transaction(db) { UserM.find {
         UserMs.discordId eq user.idLong
     }.firstOrNull() ?: UserM.new { discordId = user.idLong; botAdmin = false; banned = false } }
 
-    fun guild(guild: Guild): GuildM {
+    fun guild(guild: Guild) = guild(guild.idLong)
+
+    fun guild(guild: Long): GuildM {
         return transaction(db) { GuildM.find {
-            GuildMs.discordId eq guild.idLong
-        }.firstOrNull() ?: GuildM.new { discordId = guild.idLong; prefix = "!" } }
+            GuildMs.discordId eq guild
+        }.firstOrNull() ?: GuildM.new { discordId = guild; prefix = "!" } }
     }
 
     fun users() = transaction(db) { UserM.all().toList() }
@@ -246,6 +313,10 @@ class ExposedDatabase(val db: Database, bot: Bot) {
     }
 
     fun guildCount() = trnsctn { GuildM.count(Op.build { GuildMs.currentlyIn eq true }) }
+
+    fun commandsRun(start: Instant, end: Instant) = trnsctn {
+        CommandRun.count(Op.build { CommandRuns.timestamp.between(start, end) })
+    }
 
     fun <T> trnsctn(block: Transaction.() -> T): T = transaction(db, block)
 }
