@@ -145,3 +145,5 @@ fun deleteDirectory(path: Path) {
 typealias DoubleRange = ClosedFloatingPointRange<Double>
 
 data class RGB(val r: UByte, val g: UByte, val b: UByte, val a: UByte = 255U)
+
+inline fun <T> T.runIf(condition: Boolean, block: T.() -> T) = if (condition) block() else this

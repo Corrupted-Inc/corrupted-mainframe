@@ -29,6 +29,7 @@ import net.dv8tion.jda.api.utils.cache.CacheFlag
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.DatabaseConfig
 import org.slf4j.Logger
+import org.slf4j.impl.SimpleLogger
 import org.slf4j.impl.SimpleLoggerFactory
 import java.io.File
 import java.time.Instant

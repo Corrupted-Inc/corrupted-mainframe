@@ -41,7 +41,7 @@ class RobotPaths(private val bot: Bot) {
         FULL, AUTO
     }
 
-    fun getPath(team: Int, year: Int, match: TheBlueAlliance.Match, type: Type): String? {
+    private fun getPath(team: Int, year: Int, match: TheBlueAlliance.Match, type: Type): String? {
         bot.database.trnsctn {
             val existing = CachedZebra.find { (CachedZebras.matchKey eq match.key) and (CachedZebras.team eq team) and (CachedZebras.eventKey eq match.eventKey) }.singleOrNull()
             existing ?: return@trnsctn null
@@ -49,7 +49,7 @@ class RobotPaths(private val bot: Bot) {
                 Type.FULL -> existing.fullPath
                 Type.AUTO -> existing.autoPath
             }
-        }?.run { return this }
+        }
 
         return fetchPath(team, year, match, type)
     }
@@ -62,11 +62,11 @@ class RobotPaths(private val bot: Bot) {
     }
 
     suspend fun renderAutos(team: Int, year: Int, eventKey: String): ByteArray? {
-        val matches = bot.theBlueAlliance.matches(team, eventKey) ?: return null.apply { println("no matches") }
-        if (matches.isEmpty()) return null.apply { println("empty matches") }
+        val matches = bot.theBlueAlliance.matches(team, eventKey) ?: return null
+        if (matches.isEmpty()) return null
 
         val data = matches.mapNotNull { getPath(team, year, it, Type.AUTO) }
 
-        return bot.pathDrawer.robotPaths(data, year, RGB(255U, 255U, 255U)).apply { println(this) }
+        return bot.pathDrawer.robotPaths(data, year, RGB(255U, 255U, 255U))
     }
 }

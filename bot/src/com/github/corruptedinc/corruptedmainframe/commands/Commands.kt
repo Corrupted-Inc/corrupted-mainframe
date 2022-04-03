@@ -1,10 +1,10 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
-import com.github.corruptedinc.corruptedmainframe.calculator.Calculator
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.VARCHAR_MAX_LENGTH
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Reminders
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
+import com.github.corruptedinc.corruptedmainframe.math.InfixNotationParser
 import com.github.corruptedinc.corruptedmainframe.utils.*
 import dev.minn.jda.ktx.Message
 import dev.minn.jda.ktx.await
@@ -28,8 +28,6 @@ import org.jetbrains.exposed.sql.Op
 import org.jetbrains.exposed.sql.and
 import org.ocpsoft.prettytime.nlp.PrettyTimeParser
 import java.awt.Color
-import java.math.MathContext
-import java.math.RoundingMode
 import java.time.*
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAccessor
@@ -73,7 +71,7 @@ class Commands(val bot: Bot) {
         }
 
         private const val MIN_CALCULATOR_PRECISION = 2
-        private const val MAX_CALCULATOR_PRECISION = 512
+        private const val MAX_CALCULATOR_PRECISION = 1024
         private const val DEF_CALCULATOR_PRECISION = 20
 
         private const val SLOTS_HEIGHT = 3
@@ -210,26 +208,19 @@ class Commands(val bot: Bot) {
             event.replyEmbeds(embed("${event.user.name} is playing...", description = out)).await()
         }
 
-        // TODO replace with a better backend
         register(slash("math", "Evaluate arbitrary-precision math")
             .addOption(OptionType.STRING, "expression", "The expression to evaluate", true)
             .addOption(OptionType.INTEGER, "precision", "The precision in digits")
         ) { event ->
-            val exp = (event.getOption("expression")!!.asString).removeSurrounding("\"")  // discord bad
-                .replaceBefore("=", "")
-                .removePrefix(" ")  // for now variables are not allowed
+            val exp = event.getOption("expression")!!.asString
 
-            if (exp.containsAny(listOf("sqrt", "sin", "cos", "tan"))) {
-                throw CommandException("This is a very rudimentary calculator that does not support anything" +
-                        " except `+`, `-`, `*`, `/`, and `^`.")
-            }
             val precision = (event.getOption("precision")?.asLong?.toInt() ?: DEF_CALCULATOR_PRECISION)
                 .coerceIn(MIN_CALCULATOR_PRECISION, MAX_CALCULATOR_PRECISION)
 
             // User doesn't need to see an exception
             @Suppress("SwallowedException", "TooGenericExceptionCaught")
             try {
-                val result = Calculator(MathContext(precision, RoundingMode.HALF_UP)).evaluate(exp)
+                val result = InfixNotationParser(precision).parse(exp)
                 event.replyEmbeds(embed("Result", description = "$exp = ${result.toPlainString()}")).await()
             } catch (e: Exception) {
                 throw CommandException("Failed to evaluate '$exp'!")

@@ -177,6 +177,7 @@ class TheBlueAlliance(private val token: String, private val scope: CoroutineSco
             .replace("\\bpch\\b".toRegex(), "peachtree")
             .replace("\\bdistrict champs\\b".toRegex(), "district championships")
             .replace("\\bdcmps?\\b".toRegex(), "district championships")
+            .replace("\\bgpk\\b".toRegex(), "glacier peak")
         val simple = simpleEventByName(replaced, year) ?: return null
         return eventCache[simple.key]
     }

@@ -31,6 +31,7 @@ class PathDrawer(private val bot: Bot) {
     }
 
     private suspend fun render(svg: StringBuilder): ByteArray? {
+        val start = System.currentTimeMillis()
         val file = tmpDir.resolve("file.svg")
         file.writeText(svg)
         val output = tmpDir.resolve("file.png")
@@ -49,6 +50,7 @@ class PathDrawer(private val bot: Bot) {
         val read = output.readBytes()
         output.deleteIfExists()
         file.deleteIfExists()
+        bot.log.trace("rendering SVG took ${System.currentTimeMillis() - start}ms")
         return read
     }
 
@@ -69,7 +71,13 @@ class PathDrawer(private val bot: Bot) {
         val c = "#%02X%02X%02X".format(color.r.toInt(), color.g.toInt(), color.b.toInt())
 
         for (item in pathData) {
-            out.append("<path transform=\"scale(0.3048, 0.3048)\" d=\"$item\" stroke=\"$c\" stroke-width=\"0.075\" fill=\"transparent\" />")
+            out.append("<path transform=\"scale(0.3048, 0.3048)\" d=\"$item\" stroke=\"$c\" stroke-width=\"0.075\" fill=\"transparent\"/>")
+            val startPos = "M(\\d+(\\.\\d+)?) (\\d+(\\.\\d+)?)".toRegex().find(item.take(50))
+            if (startPos != null) {
+                val x = startPos.groups[1]!!.value.toDouble() * 0.3048
+                val y = startPos.groups[3]!!.value.toDouble() * 0.3048
+                out.append("<circle cx=\"$x\" cy=\"$y\" r=\"0.15\" stroke=\"black\" stroke-width=\"0.05\" fill=\"white\"/>")
+            }
         }
 
         out.append("</svg>")
@@ -112,11 +120,10 @@ class PathDrawer(private val bot: Bot) {
         val background = withContext(Dispatchers.IO) {
             this::class.java.classLoader.getResourceAsStream("fields/$year.svg")?.readAllBytes()?.decodeToString()
         }
-        println("AAA ${background != null}")
 
         val width = 1920
         val height = 1920 / 2
 
-        return drawPath(data, width, height, background, color).apply { println("drawn $this") }!!
+        return drawPath(data, width, height, background, color)!!
     }
 }
