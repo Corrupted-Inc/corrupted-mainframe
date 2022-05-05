@@ -7,6 +7,7 @@ import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.em
 import com.github.corruptedinc.corruptedmainframe.commands.Leveling
 import com.github.corruptedinc.corruptedmainframe.commands.RobotPaths
 import com.github.corruptedinc.corruptedmainframe.commands.TheBlueAlliance
+import com.github.corruptedinc.corruptedmainframe.commands.fights.Fights
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.plugin.PluginLoader
 import com.github.corruptedinc.corruptedmainframe.utils.PathDrawer
@@ -17,6 +18,7 @@ import kotlinx.coroutines.*
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.entities.Activity
 import net.dv8tion.jda.api.entities.ChannelType
+import net.dv8tion.jda.api.entities.Icon
 import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
@@ -33,6 +35,7 @@ import org.slf4j.impl.SimpleLogger
 import org.slf4j.impl.SimpleLoggerFactory
 import java.io.File
 import java.time.Instant
+import java.util.*
 
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -59,6 +62,7 @@ class Bot(val config: Config) {
     private val plugins = PluginLoader(File("plugins"), this)
     val pathDrawer = PathDrawer(this)
     val paths = RobotPaths(this)
+    val fights = Fights(this)
 
     companion object {
         /** Number of milliseconds between checking for expiring reminders. */

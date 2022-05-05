@@ -10,6 +10,52 @@ class Row(private vararg val items: String, val overrideWidths: Array<Int?> = ar
     val indices get() = items.indices
 }
 
+enum class Align {
+    LEFT, CENTER, RIGHT
+}
+
+class Col(val align: Align, private vararg val items: String, val overrideWidth: Int = -1) : Iterable<String> by items.toList() {
+    val size = items.size
+
+    operator fun get(index: Int) = items[index]
+}
+
+fun table(vararg data: Col): String {
+    val colWidths = data.map { if (it.overrideWidth != -1) it.overrideWidth else (it.maxOf { v -> v.length } + 2) }
+    val builder = StringBuilder()
+
+    val horizontalLine = colWidths.joinToString("+", "+", "+\n") { "-".repeat(it) }
+
+    builder.append(horizontalLine)
+
+    builder.append(data.zip(colWidths).joinToString("|", "|", "|") { it.first[0].padEnd(it.second) })
+    builder.append('\n')
+
+    builder.append(horizontalLine)
+
+    for (row in 1 until data[0].size) {
+        builder.append("| ")
+        for ((i, c) in data.withIndex()) {
+            val width = colWidths[i] - 2
+            val value = c[row].run {
+                when (c.align) {
+                    Align.LEFT -> padEnd(width)
+                    Align.RIGHT -> padStart(width)
+                    Align.CENTER -> TODO()
+                }
+            }
+            builder.append(value)
+
+            builder.append(" | ")
+        }
+        builder.append('\n')
+    }
+
+    builder.append(horizontalLine)
+
+    return builder.toString()
+}
+
 fun table(data: Array<Row>): String {
     val columnWidths = data.first().indices.map {
         data.maxOf { r -> r[it].length } + 2

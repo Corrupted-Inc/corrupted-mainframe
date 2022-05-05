@@ -6,6 +6,7 @@ import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Remind
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.github.corruptedinc.corruptedmainframe.math.InfixNotationParser
 import com.github.corruptedinc.corruptedmainframe.utils.*
+import dev.minn.jda.ktx.CoroutineEventListener
 import dev.minn.jda.ktx.Message
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.interactions.replyPaginator
@@ -17,21 +18,32 @@ import net.dv8tion.jda.api.entities.GuildChannel
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.MessageEmbed.Field
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
+import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent
+import net.dv8tion.jda.api.events.interaction.command.MessageContextInteractionEvent
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
+import net.dv8tion.jda.api.events.interaction.command.UserContextInteractionEvent
 import net.dv8tion.jda.api.exceptions.ErrorResponseException
 import net.dv8tion.jda.api.exceptions.PermissionException
+import net.dv8tion.jda.api.interactions.commands.Command
+import net.dv8tion.jda.api.interactions.commands.CommandInteraction
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.SlashCommandInteraction
 import net.dv8tion.jda.api.interactions.commands.build.*
-import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
-import org.jetbrains.exposed.sql.Op
-import org.jetbrains.exposed.sql.and
+import net.dv8tion.jda.api.interactions.commands.build.Commands.*
+import net.dv8tion.jda.api.interactions.commands.context.MessageContextInteraction
+import net.dv8tion.jda.api.interactions.commands.context.UserContextInteraction
+import org.intellij.lang.annotations.Language
+import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
+import org.jetbrains.exposed.sql.transactions.transactionManager
 import org.ocpsoft.prettytime.nlp.PrettyTimeParser
 import java.awt.Color
 import java.time.*
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAccessor
 import java.util.*
+import kotlin.math.roundToLong
 import kotlin.random.Random
 import kotlin.time.toKotlinDuration
 
@@ -93,12 +105,13 @@ class Commands(val bot: Bot) {
     }
 
     internal val newCommands = mutableListOf<CommandData>()
+    val listeners = mutableListOf<CoroutineEventListener>()
 
     // TODO custom listener pool that handles exceptions
     // TODO cleaner way than upserting the command every time
-    fun register(data: CommandData, lambda: suspend (SlashCommandInteractionEvent) -> Unit) {
+    fun register(data: CommandData, lambda: suspend (SlashCommandInteraction) -> Unit) {
         newCommands.add(data)
-        bot.jda.listener<SlashCommandInteractionEvent> {
+        listeners.add(bot.jda.listener<SlashCommandInteractionEvent> {
             if (it.name == data.name) {
                 val hook = it.hook
                 val start = System.currentTimeMillis()
@@ -112,14 +125,14 @@ class Commands(val bot: Bot) {
                         if (it.isAcknowledged) {
                             hook.editOriginalEmbeds(embed).await()
                         } else {
-                            it.replyEmbeds(embed).await()
+                            it.replyEmbeds(embed).ephemeral().await()
                         }
                     } catch (e: Exception) {
                         val embed = embed("Internal Error", color = ERROR_COLOR)
                         if (it.isAcknowledged) {
                             hook.editOriginalEmbeds(embed).await()
                         } else {
-                            it.replyEmbeds(embed).await()
+                            it.replyEmbeds(embed).ephemeral().await()
                         }
                         bot.log.error("Error in command '${data.name}':\n" + e.stackTraceToString())
                     }
@@ -137,6 +150,104 @@ class Commands(val bot: Bot) {
                     }
                 }
             }
+        })
+    }
+
+    fun registerUser(data: CommandData, lambda: suspend (UserContextInteraction) -> Unit) {
+        newCommands.add(data)
+        listeners.add(bot.jda.listener<UserContextInteractionEvent> {
+            if (it.name == data.name) {
+                val hook = it.hook
+                val start = System.currentTimeMillis()
+                try {
+                    @Suppress("TooGenericExceptionCaught")
+                    try {
+                        if (bot.database.banned(it.user)) return@listener
+                        lambda(it)
+                    } catch (e: CommandException) {
+                        val embed = embed("Error", description = e.message, color = ERROR_COLOR)
+                        if (it.isAcknowledged) {
+                            hook.editOriginalEmbeds(embed).await()
+                        } else {
+                            it.replyEmbeds(embed).ephemeral().await()
+                        }
+                    } catch (e: Exception) {
+                        val embed = embed("Internal Error", color = ERROR_COLOR)
+                        if (it.isAcknowledged) {
+                            hook.editOriginalEmbeds(embed).await()
+                        } else {
+                            it.replyEmbeds(embed).ephemeral().await()
+                        }
+                        bot.log.error("Error in command '${data.name}':\n" + e.stackTraceToString())
+                    }
+                } catch (ignored: PermissionException) {}  // nested try/catch is my favorite
+                bot.database.trnsctn {
+                    val g = bot.database.guild(it.guild!!)
+                    val u = bot.database.user(it.user)
+
+                    ExposedDatabase.CommandRun.new {
+                        this.guild = g.id
+                        this.user = u.id
+                        this.timestamp = Instant.now()
+                        this.command = it.name
+                        this.millis = System.currentTimeMillis() - start
+                    }
+                }
+            }
+        })
+    }
+
+    fun registerMessage(data: CommandData, lambda: suspend (MessageContextInteraction) -> Unit) {
+        newCommands.add(data)
+        listeners.add(bot.jda.listener<MessageContextInteractionEvent> {
+            if (it.name == data.name) {
+                val hook = it.hook
+                val start = System.currentTimeMillis()
+                try {
+                    @Suppress("TooGenericExceptionCaught")
+                    try {
+                        if (bot.database.banned(it.user)) return@listener
+                        lambda(it)
+                    } catch (e: CommandException) {
+                        val embed = embed("Error", description = e.message, color = ERROR_COLOR)
+                        if (it.isAcknowledged) {
+                            hook.editOriginalEmbeds(embed).await()
+                        } else {
+                            it.replyEmbeds(embed).ephemeral().await()
+                        }
+                    } catch (e: Exception) {
+                        val embed = embed("Internal Error", color = ERROR_COLOR)
+                        if (it.isAcknowledged) {
+                            hook.editOriginalEmbeds(embed).await()
+                        } else {
+                            it.replyEmbeds(embed).ephemeral().await()
+                        }
+                        bot.log.error("Error in command '${data.name}':\n" + e.stackTraceToString())
+                    }
+                } catch (ignored: PermissionException) {}  // nested try/catch is my favorite
+                bot.database.trnsctn {
+                    val g = bot.database.guild(it.guild!!)
+                    val u = bot.database.user(it.user)
+
+                    ExposedDatabase.CommandRun.new {
+                        this.guild = g.id
+                        this.user = u.id
+                        this.timestamp = Instant.now()
+                        this.command = it.name
+                        this.millis = System.currentTimeMillis() - start
+                    }
+                }
+            }
+        })
+    }
+
+    fun autocomplete(commandPath: String, param: String, lambda: (value: String, event: CommandAutoCompleteInteractionEvent) -> List<Command.Choice>) {
+        bot.jda.listener<CommandAutoCompleteInteractionEvent> { event ->
+            if (event.commandPath != commandPath) return@listener
+            val op = event.focusedOption
+            if (op.name != param) return@listener
+
+            event.replyChoices(lambda(op.value, event)).await()
         }
     }
 
@@ -159,11 +270,11 @@ class Commands(val bot: Bot) {
         }
     }
 
-    fun assertAdmin(event: SlashCommandInteraction) {
+    fun assertAdmin(event: CommandInteraction) {
         assertPermissions(event, Permission.ADMINISTRATOR)
     }
 
-    fun assertPermissions(event: SlashCommandInteraction, vararg permissions: Permission,
+    fun assertPermissions(event: CommandInteraction, vararg permissions: Permission,
                           channel: GuildChannel = event.guildChannel) {
         if (bot.database.trnsctn { bot.database.user(event.user).botAdmin }) return
         val member = event.member ?: throw CommandException("Missing permissions!")
@@ -253,7 +364,7 @@ class Commands(val bot: Bot) {
                         return@register
                     }
                     event.replyPaginator(pages = embeds.toTypedArray(), Duration.of(BUTTON_TIMEOUT, ChronoUnit.MILLIS)
-                        .toKotlinDuration()).await()
+                        .toKotlinDuration()).ephemeral().await()
                 }
 
                 "add" -> {
@@ -297,7 +408,7 @@ class Commands(val bot: Bot) {
 
                     // Instant::toString returns an ISO 8601 formatted string
                     event.replyEmbeds(embed("Added a reminder for $instant",
-                        description = "<t:${instant.epochSecond}:R>")).await()
+                        description = "<t:${instant.epochSecond}:R>")).ephemeral().await()
                 }
                 "remove" -> {
                     val name = event.getOption("name")!!.asString
@@ -312,7 +423,7 @@ class Commands(val bot: Bot) {
                             }
                             count
                         }
-                        event.replyEmbeds(embed("Removed $c reminders")).await()
+                        event.replyEmbeds(embed("Removed $c reminders")).ephemeral().await()
                         return@register
                     }
                     val time = bot.database.trnsctn {
@@ -322,9 +433,35 @@ class Commands(val bot: Bot) {
                         }.singleOrNull() ?: throw CommandException("Couldn't find a reminder with that name!")
                         reminder.time.toEpochSecond(ZoneOffset.UTC)
                     }
-                    event.replyEmbeds(embed("Removed a reminder set for <t:$time>")).await()
+                    event.replyEmbeds(embed("Removed a reminder set for <t:$time>")).ephemeral().await()
                 }
             }
+        }
+
+        register(slash("fight", "Fight another user")
+            .addOption(OptionType.USER, "user", "The user to fight", true)) { event ->
+            val user = event.getOption("user")!!.asMember ?: throw CommandException("You can't fight someone in a different server!")
+            val attacker = event.member!!
+
+            if (user == attacker) throw CommandException("You can't fight yourself!")
+
+            val guild = event.guild!!
+//            if (bot.leveling.level(attacker.user, guild) > bot.leveling.level(user.user, guild) + 5.0 && user.idLong != bot.jda.selfUser.idLong)
+//                throw CommandException("Can't fight someone more than 5 levels lower than you!")
+
+            bot.database.trnsctn {
+                val u = bot.database.user(attacker.user)
+                val g = bot.database.guild(guild)
+                val pts = ExposedDatabase.Point.find { (ExposedDatabase.Points.user eq u.id) and (ExposedDatabase.Points.guild eq g.id) }.first()
+                val cooldown = pts.fightCooldown.plus(g.fightCooldown)
+                val now = Instant.now()
+                if (cooldown.isAfter(now)) {
+                    throw CommandException("Can't fight again until <t:${cooldown.epochSecond}>!")
+                }
+
+                pts.fightCooldown = now
+            }
+            bot.fights.sendFight(event, attacker.user, user.user, guild)
         }
 
         // TODO better parsing
@@ -341,7 +478,7 @@ class Commands(val bot: Bot) {
                 val user = bot.database.user(event.user)
                 user.timezone = zone
             }
-            event.replyEmbeds(embed("Set your timezone to $zone")).await()
+            event.replyEmbeds(embed("Set your timezone to $zone")).ephemeral().await()
         }
 
         register(slash("sql", "not for you")
@@ -373,7 +510,7 @@ class Commands(val bot: Bot) {
                     output
                 }
             }
-            val count = output?.firstOrNull()?.size ?: run { event.reply("empty result").await(); return@register }
+            val count = output?.firstOrNull()?.size ?: run { event.reply("empty result").ephemeral().await(); return@register }
             val columnWidths = IntArray(count)
 
             for (row in output) {
@@ -413,7 +550,7 @@ class Commands(val bot: Bot) {
 
             @Suppress("SpreadOperator")
             event.replyPaginator(pages = pages.toTypedArray(), Duration.of(BUTTON_TIMEOUT, ChronoUnit.MILLIS)
-                .toKotlinDuration()).await()
+                .toKotlinDuration()).ephemeral().await()
         }
 
         register(slash("tba", "Get information from The Blue Alliance about a team.")
@@ -506,7 +643,7 @@ class Commands(val bot: Bot) {
         register(slash("zebra", "Plots the Zebra Motionworks data from a team's autos at an event")
             .addOption(OptionType.INTEGER, "team", "Team number", true)
             .addOption(OptionType.INTEGER, "year", "The year to get data from", true)
-            .addOption(OptionType.STRING, "event", "The event to get data from", true)
+            .addOption(OptionType.STRING, "event", "The event to get data from", true, true)
 //            .addOption(OptionType.STRING, "match", "The match ")
         ) { event ->
             val hook = event.hook
@@ -523,6 +660,13 @@ class Commands(val bot: Bot) {
                 .await()
         }
 
+        autocomplete("zebra", "event") { value, event ->
+            val year = event.getOption("year")!!.asLong
+            val ev = bot.theBlueAlliance.autocompleteEventName(value, year.toInt())
+
+            return@autocomplete ev.map { Command.Choice(it, it) }
+        }
+
         register(slash("userinfo", "Gets info on a user")
             .addOption(OptionType.USER, "user", "The user to get the information on", true)) { event ->
             val user = event.getOption("user")!!.asUser
@@ -537,7 +681,73 @@ class Commands(val bot: Bot) {
 
             fields.add(Field("Account Creation", "<t:${user.timeCreated.toInstant().epochSecond}>", false))
 
-            event.replyEmbeds(embed(title = user.asTag, content = fields)).await()
+            event.replyEmbeds(embed(title = user.asTag, content = fields)).ephemeral().await()
+        }
+
+        @Language("sql") val rankStatement =
+                "UPDATE points SET rank = RankTable.rank " +
+                        "FROM (SELECT id, DENSE_RANK() OVER(ORDER BY points DESC, id) AS rank FROM points WHERE guild = ?) " +
+                        "AS RankTable WHERE RankTable.id = points.id"
+
+        register(slash("leaderboard", "Shows the server level leaderboard.")) { event ->
+            // update rank column
+            bot.database.trnsctn {
+                val g = bot.database.guild(event.guild!!)
+                // yes, I'm aware this is awful, but because it must be an integer and isn't user provided it's safe
+                // if it was user provided I would have put more effort into a prepared statement
+                exec(rankStatement.replace("?", g.id.value.toString()))
+            }
+
+            val guildid = event.guild!!.idLong
+
+            fun area(start: Long, end: Long): MessageEmbed {
+                val idsRanksPoints = bot.database.trnsctn {
+                    val g = bot.database.guild(guildid).id
+                    // TODO: add secondary sort column somehow
+                    val items = ExposedDatabase.Point.find { (ExposedDatabase.Points.guild eq g) and (ExposedDatabase.Points.rank greaterEq start) and (ExposedDatabase.Points.rank less end) }.limit(30)
+                        .sortedByDescending { it.points }
+
+                    items.map { Triple(it.user.discordId, it.rank, it.points.roundToLong()) }
+                }
+
+                val g = bot.jda.getGuildById(guildid)!!
+
+                val rankCol = Col(Align.RIGHT, *(arrayOf("Rank") + idsRanksPoints.map { it.second.toString() }))
+                val nameCol = Col(Align.LEFT, *(arrayOf("Name") + idsRanksPoints.map { g.getMemberById(it.first)?.effectiveName ?: "bug" }))
+                val pntsCol = Col(Align.LEFT, *(arrayOf("Points") + idsRanksPoints.map { it.third.toString() }))
+
+                return embed("Leaderboard $start - $end", description = "```" + table(rankCol, nameCol, pntsCol) + "```")
+            }
+
+            val perMessage = 15
+            val size = event.guild!!.memberCount / perMessage  // todo: dejankify
+
+            event.replyLambdaPaginator(size.toLong()) { v ->
+                area(v * perMessage, (v + 1) * perMessage)
+            }
+        }
+
+        registerUser(user("fight")) { event ->
+            val user = event.target
+            val attacker = event.member!!
+
+            if (user == attacker) throw CommandException("You can't fight yourself!")
+
+            val guild = event.guild!!
+
+            bot.database.trnsctn {
+                val u = bot.database.user(attacker.user)
+                val g = bot.database.guild(guild)
+                val pts = ExposedDatabase.Point.find { (ExposedDatabase.Points.user eq u.id) and (ExposedDatabase.Points.guild eq g.id) }.first()
+                val cooldown = pts.fightCooldown.plus(g.fightCooldown)
+                val now = Instant.now()
+                if (cooldown.isAfter(now)) {
+                    throw CommandException("Can't fight again until <t:${cooldown.epochSecond}>!")
+                }
+
+                pts.fightCooldown = now
+            }
+            bot.fights.sendFight(event, attacker.user, user, guild)
         }
 
         registerAudioCommands(bot, this)

@@ -162,6 +162,35 @@ class TheBlueAlliance(private val token: String, private val scope: CoroutineSco
         }
     }
 
+    fun autocompleteEventName(name: String, year: Int): List<String> {
+        val replaced = name.lowercase()
+            .replace("\\bchs\\b".toRegex(), "chesapeake")
+            .replace("\\bfim\\b".toRegex(), "michigan")
+            .replace("\\btx\\b".toRegex(), "texas")
+            .replace("\\bin\\b".toRegex(), "indiana")
+            .replace("\\bisr\\b".toRegex(), "israel")
+            .replace("\\bfma\\b".toRegex(), "mid-atlantic")
+            .replace("\\bfnc\\b".toRegex(), "north carolina")
+            .replace("\\bne\\b".toRegex(), "new england")
+            .replace("\\bont\\b".toRegex(), "ontario")
+            .replace("\\bpnw\\b".toRegex(), "pacific northwest")
+            .replace("\\bpch\\b".toRegex(), "peachtree")
+            .replace("\\bdistrict champs\\b".toRegex(), "district championships")
+            .replace("\\bdcmps?\\b".toRegex(), "district championships")
+            .replace("\\bgpk\\b".toRegex(), "glacier peak")
+
+        val matchingYear = simpleEventCache[year] ?: emptyList()
+        val abbreviated = matchingYear.sortedBy { biasedLevenshtein(it.name.lowercase(), replaced) }
+        val full = matchingYear.find { levenshtein(it.key.lowercase(), replaced) <= 1 }
+
+        val output = mutableListOf<String>()
+        if (full != null) output.add(full.name)
+
+        output.addAll(abbreviated.take(3).map { it.name })
+
+        return output
+    }
+
     fun eventByName(name: String, year: Int): Event? {
         val replaced = name.lowercase()
             .replace("\\bchs\\b".toRegex(), "chesapeake")

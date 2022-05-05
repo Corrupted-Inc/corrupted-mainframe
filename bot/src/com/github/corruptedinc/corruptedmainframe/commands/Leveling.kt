@@ -2,6 +2,7 @@ package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
+import com.github.corruptedinc.corruptedmainframe.utils.ephemeral
 import com.github.corruptedinc.corruptedmainframe.utils.sq
 import dev.minn.jda.ktx.await
 import net.dv8tion.jda.api.Permission
@@ -9,6 +10,7 @@ import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.TextChannel
 import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.interactions.commands.OptionType
+import net.dv8tion.jda.api.interactions.commands.build.Commands
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
 import kotlin.math.*
 
@@ -17,6 +19,10 @@ class Leveling(private val bot: Bot) {
     companion object {
         const val POINTS_PER_MESSAGE = 1.0
         private const val LEVEL_BAR_WIDTH = 24
+
+        fun fightPoints(level: Double, zeroToOne: Double) = ((10 * (level + 2).pow(0.25) + 10) * zeroToOne) + 5
+
+        // TODO: move some other methods here as well
     }
 
     fun pointsToLevel(points: Double) = ln((points + 60) / 10).sq() - 3
@@ -105,6 +111,33 @@ class Leveling(private val bot: Bot) {
             bot.database.setPopups(event.user, event.guild ?:
             throw CommandException("This command must be run in a server!"), enabled)
             event.replyEmbeds(embed("Set level popups to $enabled")).await()
+        }
+
+        bot.commands.registerUser(Commands.user("level")) { event ->
+            val user = event.targetMember!!.user
+            val xp = bot.leveling.points(user, event.guild!!)
+            val level = bot.leveling.pointsToLevel(xp)
+            val levelStartXP = bot.leveling.levelToPoints(floor(level))
+            val levelEndXP = bot.leveling.levelToPoints(ceil(level))
+
+            val portion = (xp - levelStartXP) / (levelEndXP - levelStartXP)
+
+            val parts = " ▏▎▍▌▋▊▉█"
+            val blocks = LEVEL_BAR_WIDTH * portion
+            @Suppress("MagicNumber")
+            val out = (parts.last().toString().repeat(blocks.toInt()) +
+                    parts[((blocks - blocks.toInt().toDouble()) * 8).toInt()]).padEnd(LEVEL_BAR_WIDTH, ' ')
+
+            val start = levelStartXP.toInt().coerceAtLeast(0).toString()
+            val end = levelEndXP.toInt().toString()
+
+            event.replyEmbeds(embed("Level ${level.toInt()}", description = "${user.asMention} has " +
+                    "${xp.toInt()} points\nonly ${(levelEndXP - xp).roundToInt()} points to " +
+                    "go until level ${level.toInt() + 1}!\n" +
+                    "`" + start.padEnd(LEVEL_BAR_WIDTH + 2 - end.length, ' ') + end + "`\n" +
+                    "`|$out|`",
+                thumbnail = user.effectiveAvatarUrl,
+                stripPings = false)).ephemeral().await()
         }
     }
 }

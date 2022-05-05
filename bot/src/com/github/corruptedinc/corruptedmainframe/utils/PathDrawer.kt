@@ -54,7 +54,7 @@ class PathDrawer(private val bot: Bot) {
         return read
     }
 
-    private suspend fun drawPath(pathData: List<String>, width: Int, height: Int, backgroundSVG: String?, color: RGB): ByteArray? {
+    private suspend fun drawPath(pathData: List<String>, width: Int, height: Int, backgroundSVG: String?, color: RGB, xInverted: Boolean, yInverted: Boolean): ByteArray? {
         val out = StringBuilder()
 
         val viewboxW = 16.4592
@@ -64,7 +64,7 @@ class PathDrawer(private val bot: Bot) {
 
         out.append("""
             <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-            <svg width="$width" height="$height" viewBox="0 0 16.4592 8.2296" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+            <svg  width="$width" height="$height" viewBox="0 0 16.4592 8.2296" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
                 ${bg ?: ""}
         """.trimIndent())
 
@@ -116,7 +116,7 @@ class PathDrawer(private val bot: Bot) {
         return robotPaths(listOf(data.toString()), year, color)
     }
 
-    suspend fun robotPaths(data: List<String>, year: Int, color: RGB): ByteArray {
+    suspend fun robotPaths(data: List<String>, year: Int, color: RGB, xInverted: Boolean = false, yInverted: Boolean = false): ByteArray {
         val background = withContext(Dispatchers.IO) {
             this::class.java.classLoader.getResourceAsStream("fields/$year.svg")?.readAllBytes()?.decodeToString()
         }
@@ -124,6 +124,6 @@ class PathDrawer(private val bot: Bot) {
         val width = 1920
         val height = 1920 / 2
 
-        return drawPath(data, width, height, background, color)!!
+        return drawPath(data, width, height, background, color, xInverted, yInverted)!!
     }
 }

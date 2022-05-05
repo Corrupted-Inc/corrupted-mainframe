@@ -1,14 +1,13 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
+import com.github.corruptedinc.corruptedmainframe.commands.fights.Attack
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoleMessage.Companion
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoleMessages
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoles
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
-import com.github.corruptedinc.corruptedmainframe.utils.biasedLevenshteinInsensitive
-import com.github.corruptedinc.corruptedmainframe.utils.levenshtein
-import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
+import com.github.corruptedinc.corruptedmainframe.utils.*
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.interactions.Command
 import dev.minn.jda.ktx.listener
@@ -21,6 +20,7 @@ import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInterac
 import net.dv8tion.jda.api.events.interaction.component.SelectMenuInteractionEvent
 import net.dv8tion.jda.api.exceptions.PermissionException
 import net.dv8tion.jda.api.interactions.commands.OptionType
+import net.dv8tion.jda.api.interactions.commands.build.Commands.message
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
 import net.dv8tion.jda.api.interactions.commands.build.OptionData.MAX_CHOICES
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
@@ -32,6 +32,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import kotlin.math.min
+import kotlin.math.roundToLong
 
 private const val MAX_PURGE = 1000
 private const val PURGE_DELAY = 2000L
@@ -89,7 +90,6 @@ fun registerCommands(bot: Bot) {
         val id = bot.jda.selfUser.id
         builder.setDescription("""
                 **Bot Info**
-                Members: ${bot.database.users().size}
                 Guilds: ${bot.database.guildCount()}
                 Commands: ${bot.commands.newCommands.size}
                 Gateway ping: ${bot.jda.gatewayPing}ms
@@ -98,8 +98,12 @@ fun registerCommands(bot: Bot) {
                 Git: ${bot.config.gitUrl}
                 Invite: [Admin invite](${Commands.adminInvite(id)})  [basic permissions](${Commands.basicInvite(id)})
                 Commands Run Today: ${bot.database.commandsRun(Instant.now().minus(24, ChronoUnit.HOURS), Instant.now())}
+                Commands Run Total: ${bot.database.commandsRun(Instant.EPOCH, Instant.now())}
                 **Guild Info**
                 Owner: ${event.guild?.owner?.asMention}
+                Creation Date: <t:${event.guild?.timeCreated?.toEpochSecond()}> UTC
+                Members: ${event.guild?.memberCount}
+                Boost Level: ${event.guild?.boostTier?.name?.lowercase()?.replace('_', ' ')}
             """.trimIndent())
         event.replyEmbeds(builder.build()).await()
     }
@@ -112,7 +116,7 @@ fun registerCommands(bot: Bot) {
             ?: throw CommandException("Failed to find user")
 
         event.guild?.ban(user, 0)?.await() ?: throw CommandException("Must be run in a server!")
-        event.replyEmbeds(Commands.embed("Banned", description = "Banned ${user.asMention}")).await()
+        event.replyEmbeds(Commands.embed("Banned", description = "Banned ${user.asMention}")).ephemeral().await()
     }
 
     bot.commands.register(
@@ -122,7 +126,7 @@ fun registerCommands(bot: Bot) {
         val user = event.getOption("user")?.asUser ?: throw CommandException("Failed to find user!")
 
         event.guild?.unban(user)?.await() ?: throw CommandException("Couldn't unban user!")
-        event.replyEmbeds(Commands.embed("Unbanned", description = "Unbanned ${user.asMention}"))
+        event.replyEmbeds(Commands.embed("Unbanned", description = "Unbanned ${user.asMention}")).ephemeral().await()
     }
 
     bot.commands.register(
@@ -132,8 +136,8 @@ fun registerCommands(bot: Bot) {
         val user = event.getOption("user")?.asUser
             ?: throw CommandException("Failed to find user")
 
-        event.guild?.kick(user.id)?.await() ?: throw CommandException("Must be run in a server!")
-        event.replyEmbeds(Commands.embed("Kicked", description = "Kicked ${user.asMention}")).await()
+        event.guild!!.kick(user.id).await()// ?: throw CommandException("Must be run in a server!")
+        event.replyEmbeds(Commands.embed("Kicked", description = "Kicked ${user.asMention}", stripPings = false)).ephemeral().await()
     }
 
     bot.commands.register(slash("reactionrole", "Manage reaction role messages")
@@ -230,7 +234,7 @@ fun registerCommands(bot: Bot) {
                     )
                 }
 
-                event.replyEmbeds(Commands.embed("Reaction Roles", content = fields)).await()
+                event.replyEmbeds(Commands.embed("Reaction Roles", content = fields)).ephemeral().await()
             }
             "delete" -> {
                 bot.commands.assertAdmin(event)
@@ -244,7 +248,7 @@ fun registerCommands(bot: Bot) {
                     item.delete()
                 }
 
-                event.replyEmbeds(Commands.embed("Successfully removed"))
+                event.replyEmbeds(Commands.embed("Successfully removed")).ephemeral().await()
             }
             "removeoption" -> {
                 bot.commands.assertAdmin(event)
@@ -260,7 +264,7 @@ fun registerCommands(bot: Bot) {
                     AutoRoles.deleteWhere { (AutoRoles.message eq item.id) and (AutoRoles.role eq role) }
                 }
 
-                event.replyEmbeds(Commands.embed("Removed $c role${if (c == 1) "" else "s"}"))
+                event.replyEmbeds(Commands.embed("Removed $c role${if (c == 1) "" else "s"}")).ephemeral().await()
             }
             "addoption" -> {
                 TODO("AAAA")
@@ -381,14 +385,14 @@ fun registerCommands(bot: Bot) {
                         "Starboard",
                         description = "Starboard successfully set up in ${channel.asMention}."
                     )
-                ).await()
+                ).ephemeral().await()
             }
             "disable" -> {
                 bot.database.trnsctn {
                     val g = bot.database.guild(event.guild!!)
                     g.starboardChannel = null
                 }
-                event.replyEmbeds(Commands.embed("Starboard", description = "Starboard disabled.")).await()
+                event.replyEmbeds(Commands.embed("Starboard", description = "Starboard disabled.")).ephemeral().await()
             }
             "remove" -> {
                 val msgID = event.getOption("link")!!.asString.substringAfterLast('/')
@@ -402,7 +406,7 @@ fun registerCommands(bot: Bot) {
 
                 bot.starboard.unstarDB(channel.retrieveMessageById(msgID).await())
                 channel.deleteMessageById(msgID).await()
-                event.replyEmbeds(Commands.embed("Starboard", description = "Removed message.")).await()
+                event.replyEmbeds(Commands.embed("Starboard", description = "Removed message.")).ephemeral().await()
             }
             "star" -> {
                 val msgLink = event.getOption("link")!!.asString
@@ -416,7 +420,7 @@ fun registerCommands(bot: Bot) {
 
                 bot.starboard.star(msg)
 
-                event.replyEmbeds(Commands.embed("Starboard", description = "Starred message.")).await()
+                event.replyEmbeds(Commands.embed("Starboard", description = "Starred message.")).ephemeral().await()
             }
             "threshold" -> {
                 bot.database.trnsctn {
@@ -424,7 +428,7 @@ fun registerCommands(bot: Bot) {
                     g.starboardThreshold = event.getOption("threshold")!!.asLong
                         .coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
                 }
-                event.replyEmbeds(Commands.embed("Starboard", description = "Successfully updated threshold.")).await()
+                event.replyEmbeds(Commands.embed("Starboard", description = "Successfully updated threshold.")).ephemeral().await()
             }
         }
     }
@@ -440,7 +444,7 @@ fun registerCommands(bot: Bot) {
             throw CommandException("Not enough permissions!")
         }.idLong
 
-        event.replyEmbeds(Commands.embed("Role Created", description = "id: $role")).await()
+        event.replyEmbeds(Commands.embed("Role Created", description = "id: $role")).ephemeral().await()
     }
 
     bot.commands.register(slash("say", "Says something in a channel.")
@@ -455,17 +459,67 @@ fun registerCommands(bot: Bot) {
         bot.commands.assertAdmin(event)
 
         channel!!.sendMessageEmbeds(Commands.embed(title, description = content, footer = "Requested by <@${event.user.id}>", stripPings = false)).await()
-        event.replyEmbeds(Commands.embed("Sent")).await()
+        event.replyEmbeds(Commands.embed("Sent")).ephemeral().await()
     }
 
-    bot.commands.register(slash("test", "this is a test")
-        .addOption(OptionType.STRING, "aaa", "AAAAAA", true, true)) { event ->
-        event.reply(event.getOption("aaa")!!.asString).await()
+    bot.commands.register(slash("fightcooldown", "Sets the timeout between fights.")
+        .addOption(OptionType.STRING, "duration", "The cooldown, in hh:mm:ss format", true)
+    ) { event ->
+        bot.commands.assertAdmin(event)
+
+        val durationString = event.getOption("duration")!!.asString
+        val sections = durationString.split(':').toMutableList()
+        val seconds = sections.removeLastOrNull()?.toDoubleOrNull() ?: 0.0
+        val minutes = sections.removeLastOrNull()?.toIntOrNull() ?: 0
+        val hours = sections.removeLastOrNull()?.toIntOrNull() ?: 0
+
+        val sRange = 0.0..60.0
+        val mRange = 0 until 60
+        val hRange = 0 until 6
+
+        if (seconds !in sRange || seconds == 60.0 || minutes !in mRange || hours !in hRange) throw CommandException("Time must be less than 6:59:59!")
+        val secs = seconds + (minutes * 60) + (hours * 3600)
+        bot.database.trnsctn {
+            val guild = bot.database.guild(event.guild!!)
+            guild.fightCooldown = Duration.ofMillis((secs * 1000).roundToLong())
+        }
+        event.replyEmbeds(Commands.embed("Cooldown Set")).ephemeral().await()
+    }
+
+    bot.commands.register(slash("fightcategories", "Pick the categories fight attacks are picked from.")
+        .addOption(OptionType.STRING, "categories", "The comma-separated categories", true, true)
+    ) { event ->
+        bot.commands.assertAdmin(event)
+
+        val categories = event.getOption("categories")!!.asString.split(",\\s?".toRegex()).mapNotNull { try { Attack.Category.valueOf(it.uppercase()) } catch (e: IllegalArgumentException) { null } }.toSet() + Attack.Category.GENERAL - Attack.Category.BOT
+        val bitmask = categories.fold(0UL) { a, b -> a or b.bitmask }
+
+        bot.database.trnsctn {
+            val g = bot.database.guild(event.guild!!)
+            g.fightCategories = bitmask
+        }
+
+        event.replyEmbeds(Commands.embed("Categories Changed", description = categories.joinToString { it.name.lowercase() })).ephemeral().await()
     }
 
     bot.jda.listener<CommandAutoCompleteInteractionEvent> { event ->
-        if (event.name == "test") {
-            event.replyChoiceStrings(event.focusedOption.value + "1", event.focusedOption.value + "2", event.focusedOption.value + "3").await()
-        }
+        if (event.name != "fightcategories") return@listener
+        val items = event.focusedOption.value.split(',').map { it.dropWhile { v -> v.isWhitespace() }.dropLastWhile { v -> v.isWhitespace() } }
+        val value = items.lastOrNull() ?: ""
+        val sorted = Attack.Category.values().filter { it.pickable }.sortedBy { biasedLevenshteinInsensitive(it.name, value) }
+        val existing = if (items.isEmpty()) "" else items.dropLast(1).joinToString() + ", "
+        event.replyChoiceStrings(sorted.map { existing + it }).await()
+    }
+
+
+    // TODO: this is broken
+    bot.commands.registerMessage(message("star")) { event ->
+        bot.commands.assertPermissions(event, Permission.MESSAGE_MANAGE)
+
+        val msg = event.target
+
+        bot.starboard.star(msg)
+
+        event.replyEmbeds(Commands.embed("Starboard", description = "Starred message.")).ephemeral().await()
     }
 }

@@ -1,5 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.core.db
 
+import com.github.corruptedinc.corruptedmainframe.commands.fights.Attack
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.CommandRuns.index
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import net.dv8tion.jda.api.entities.*
@@ -9,13 +10,15 @@ import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.javatime.datetime
-import org.jetbrains.exposed.sql.javatime.time
+import org.jetbrains.exposed.sql.javatime.duration
 import org.jetbrains.exposed.sql.javatime.timestamp
 import org.jetbrains.exposed.sql.transactions.transaction
-import java.io.DataInputStream
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
+@OptIn(ExperimentalUnsignedTypes::class)
 class ExposedDatabase(val db: Database, bot: Bot) {
     val audioDB = AudioDB(this, bot)
     val moderationDB = ModerationDB(this)
@@ -53,6 +56,8 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         val starboardThreshold = integer("starboard_threshold").default(STARBOARD_THRESHOLD_DEFAULT)
         val starboardReaction = varchar("starboard_reaction", VARCHAR_MAX_LENGTH).nullable()
         val levelsEnabled = bool("levels_enabled").default(true)
+        val fightCategories = ulong("fight_categories").default(Attack.Category.GENERAL.bitmask)
+        val fightCooldown = duration("fight_cooldown").default(Duration.of(5, ChronoUnit.MINUTES))
     }
 
     class GuildM(id: EntityID<Long>) : LongEntity(id) {
@@ -64,9 +69,19 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         var starboardThreshold by GuildMs.starboardThreshold
         var starboardReaction  by GuildMs.starboardReaction
         var levelsEnabled      by GuildMs.levelsEnabled
+        var fightCategories    by GuildMs.fightCategories
+        var fightCooldown      by GuildMs.fightCooldown
         val starredMessages    by StarredMessage.referrersOn(StarredMessages.guild)
         val crawlJobs          by ImageHashJob.referrersOn(ImageHashJobs.guild)
         val autoRoles          by ModerationDB.AutoRoleMessage.referrersOn(ModerationDB.AutoRoleMessages.guild)
+
+        val fightCategoryList = object : AbstractMutableSet<Attack.Category>() {
+            override val size get() = Attack.Category.values().count { fightCategories and it.bitmask != 0UL }
+
+            override fun iterator(): MutableIterator<Attack.Category> = Attack.Category.values().filter { fightCategories and it.bitmask != 0UL }.toMutableList().iterator()
+            override fun add(element: Attack.Category): Boolean { val original = fightCategories; fightCategories = fightCategories or element.bitmask; return (element.bitmask and original) == 0UL }
+            override fun remove(element: Attack.Category): Boolean { val original = fightCategories; fightCategories = fightCategories and (element.bitmask.inv()); return (element.bitmask and original) != 0UL }
+        }
     }
 
     object UserMs : LongIdTable(name = "users") {
@@ -88,19 +103,23 @@ class ExposedDatabase(val db: Database, bot: Bot) {
     }
 
     object Points : LongIdTable(name = "points") {
-        val user   = reference("user", UserMs).index()
-        val guild  = reference("guild", GuildMs)
+        val user = reference("user", UserMs).index()
+        val guild = reference("guild", GuildMs)
         val pnts = double("points")
         val popups = bool("popups").default(true)
+        val fightCooldown = timestamp("fight_cooldown").default(Instant.EPOCH)
+        val rank = long("rank").default(0)
     }
 
     class Point(id: EntityID<Long>) : LongEntity(id) {
         companion object : LongEntityClass<Point>(Points)
 
-        var user   by UserM referencedOn Points.user
-        var guild  by GuildM referencedOn Points.guild
-        var points by Points.pnts
-        var popups by Points.popups
+        var user          by UserM referencedOn Points.user
+        var guild         by GuildM referencedOn Points.guild
+        var points        by Points.pnts
+        var popups        by Points.popups
+        var fightCooldown by Points.fightCooldown
+        var rank          by Points.rank
     }
 
     //todo this isn't needed, remove
@@ -159,7 +178,6 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         val guild = reference("guild", GuildMs)
         val channel = long("channel")
         val message = long("message")
-        @OptIn(ExperimentalUnsignedTypes::class)
         val hash = ulong("hash").index()
         val version = short("version").default(0)
         val embedNumber = byte("embed_number")

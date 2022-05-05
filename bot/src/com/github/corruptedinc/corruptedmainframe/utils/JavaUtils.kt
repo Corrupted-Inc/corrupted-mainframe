@@ -1,5 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.utils
 
+import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
 import java.nio.file.Files
 import java.nio.file.Path
 import java.text.ParseException
@@ -147,3 +148,5 @@ typealias DoubleRange = ClosedFloatingPointRange<Double>
 data class RGB(val r: UByte, val g: UByte, val b: UByte, val a: UByte = 255U)
 
 inline fun <T> T.runIf(condition: Boolean, block: T.() -> T) = if (condition) block() else this
+
+fun ReplyCallbackAction.ephemeral() = setEphemeral(true)

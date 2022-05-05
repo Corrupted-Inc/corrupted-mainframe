@@ -1,6 +1,7 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
+import com.github.corruptedinc.corruptedmainframe.utils.ephemeral
 import dev.minn.jda.ktx.await
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
@@ -21,7 +22,7 @@ fun registerBotCommands(bot: Bot) {
 
         transaction(bot.database.db) { bot.database.user(user).botAdmin = true }
 
-        event.replyEmbeds(Commands.embed("Successfully made @${user.asTag} a global admin")).await()
+        event.replyEmbeds(Commands.embed("Successfully made @${user.asTag} a global admin")).ephemeral().await()
     }
 
     bot.commands.register(
@@ -34,7 +35,7 @@ fun registerBotCommands(bot: Bot) {
 
         bot.database.ban(user)
 
-        event.replyEmbeds(Commands.embed("Banned ${user.asMention}")).await()
+        event.replyEmbeds(Commands.embed("Banned ${user.asMention}")).ephemeral().await()
     }
 
     bot.commands.register(
@@ -47,7 +48,7 @@ fun registerBotCommands(bot: Bot) {
 
         bot.database.unban(user)
 
-        event.replyEmbeds(Commands.embed("Unbanned ${user.asMention}")).await()
+        event.replyEmbeds(Commands.embed("Unbanned ${user.asMention}")).ephemeral().await()
     }
 
     bot.commands.register(
@@ -66,7 +67,7 @@ fun registerBotCommands(bot: Bot) {
 
         transaction(bot.database.db) { bot.database.user(user).botAdmin = false }
 
-        event.replyEmbeds(Commands.embed("Successfully made @${user.asTag} not a global admin")).await()
+        event.replyEmbeds(Commands.embed("Successfully made @${user.asTag} not a global admin")).ephemeral().await()
     }
 
 
@@ -79,7 +80,7 @@ fun registerBotCommands(bot: Bot) {
 
 //            bot.audio.gracefulShutdown()  // handled by shutdown hook in Bot.kt
         bot.log.error("${event.user.asTag} (id ${event.user.id}) ran /restart")
-        event.replyEmbeds(Commands.embed("Shutting down...")).await()
+        event.replyEmbeds(Commands.embed("Shutting down...")).ephemeral().await()
         exitProcess(0)
     }
 }

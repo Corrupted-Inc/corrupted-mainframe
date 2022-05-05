@@ -31,12 +31,12 @@ dependencies {
     implementation(group = "org.jetbrains.exposed", name = "exposed-java-time", version = "0.37.3")
     implementation("com.sedmelluq:lavaplayer:1.3.73")
     runtimeOnly("com.sedmelluq:lavaplayer-common:1.0.6")
-    implementation("com.google.guava:guava:31.0.1-jre")
+    implementation("com.google.guava:guava:31.1-jre")
     implementation("ch.obermuhlner:kotlin-big-math:2.3.0")
     implementation("ch.obermuhlner:big-math:2.3.0")
     implementation("com.jagrosh:jda-utilities:3.0.5")
     implementation("org.ocpsoft.prettytime:prettytime-nlp:5.0.2.Final")
-    implementation("com.github.ben-manes.caffeine:caffeine:3.0.5")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.0.6")
     implementation("dev.brachtendorf:JImageHash:1.0.0")
 }
 
@@ -91,9 +91,18 @@ tasks {
         from(javadoc)
     }
 
+    val classesJar by creating(Jar::class) {
+        dependsOn.add(classes)
+        archiveClassifier.set("classes")
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        from(/*sourceSets.main.get().allSource, configurations.runtimeClasspath.get().filter { !it.path.endsWith(".pom") }.map { if (it.isDirectory) it else zipTree(it) },*/ sourceSets.main.get().output)
+//        from(configurations.runtimeClasspath.get().filter { !it.path.endsWith(".pom") }.map { if (it.isDirectory) it else zipTree(it) })
+    }
+
     artifacts {
         archives(sourcesJar)
         archives(javadocJar)
+        archives(classesJar)
         archives(jar)
     }
 }
