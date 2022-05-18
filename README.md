@@ -1,8 +1,8 @@
 # Corrupted Mainframe
-*A JDA discord bot*
+*A JDA discord bot written in the Kotlin programming language*
 
-This is a general-purpose discord bot.  Right now it has moderation features, 
-music, and utilities.
+This is a general-purpose discord bot. Currently, it has moderation features, 
+music, and various utilities.
 
 ## Building
 1. Clone the repo<br>
