@@ -69,24 +69,23 @@ interface Attack {
             
             // LINUX
             // REGULAR ATTACKS
-            SimpleAttack(Category.LINUX, 1.0, "%a unleashed the penguins!", 0, 10.0, 1.0, 0.35),
+            SimpleAttack(Category.LINUX, 1.0, "%a unleashed the penguins!", 0, 10.0, 1.0, 0.45),
             SimpleAttack(Category.LINUX, 0.5, "%a installed TempleOS on %v's computer!", 2, 15.0, 1.0, 0.3),
-            SimpleAttack(Category.LINUX, 0.5, "%a ranted for 3 hours about systemd!", 5, 30.0, 1.0, 0.75),
-            SimpleAttack(Category.LINUX, 0.5, "%a told %v their rice sucks!", 8, 20.0, 1.0, 0.5),
-            SimpleAttack(Category.LINUX, 0.25, "%a ran rm -rf /home/%v", 15, 60.0, 2.0, 0.85),
+            SimpleAttack(Category.LINUX, 0.5, "%a ranted for 3 hours about systemd!", 5, 20.0, 1.0, 0.65),
+            SimpleAttack(Category.LINUX, 0.5, "%a told %v their rice sucks!", 8, 25.0, 1.0, 0.5),
+            SimpleAttack(Category.LINUX, 0.2, "%a ran rm -rf /home/%v", 15, 40.0, 2.0, 0.65),
             SimpleAttack(Category.LINUX, 0.5, "%a installed a virus on %v's computer", 0, 15.0, 1.0, 0.5),
-            SimpleAttack(Category.LINUX, 0.5, "%a messed with %v's grub config!", 6, 45.0, 1.0, 0.5),
+            SimpleAttack(Category.LINUX, 0.5, "%a messed with %v's grub config!", 20, 45.0, 1.0, 0.5),
             SimpleAttack(Category.LINUX, 0.5, "%a exploited dirtycow!", 20, 75.0, 2.0, 0.5),
             // CRITICAL MISSES LINUX
-            SimpleAttack(Category.LINUX, 0.2, "%v attempted to delete a virus but ran rm -rf on root!", 0, 15.0, 1.0, 0.5),
-            SimpleAttack(Category.LINUX, 0.15, "%v failed their Gentoo install 7 days in!", 8, 45.0, 2.0, 0.5),
-            SimpleAttack(Category.LINUX, 0.2, "%v couldn't run their game with proton and cried!", 0, 10.0, 1.0, 0.5),
-            SimpleAttack(Category.LINUX, 0.15, "%v accidentally deleted /bin/!", 0, 20.0, 1.0, 0.5),
+            SimpleAttack(Category.LINUX, 0.1, "%v attempted to delete a virus but ran rm -rf on root!", 0, 15.0, 1.0, 0.5),
+            SimpleAttack(Category.LINUX, 0.1, "%v failed their Gentoo install 7 days in!", 8, 25.0, 2.0, 0.5),
+            SimpleAttack(Category.LINUX, 0.1, "%v couldn't run their game with proton and cried!", 0, 10.0, 1.0, 0.5),
+            SimpleAttack(Category.LINUX, 0.1, "%v accidentally deleted /bin/!", 0, 20.0, 1.0, 0.5),
             // INSTANT LINUX
-            InstakillAttack(Category.LINUX, 0.0125, "%a zeroed %v's hard-drive!", 15),
-            InstakillAttack(Category.LINUX, 0.0100, "sudo rm -rf /*", 10),
-            InstakillAttack(Category.LINUX, 0.0025, "I'd just like to interject for a moment...", 5),
-            // TODO: Balance damage and scaling (Probably won't happen, but this way I feel better about myself)
+            InstakillAttack(Category.LINUX, 0.0525, "%a zeroed %v's hard-drive!", 15),
+            InstakillAttack(Category.LINUX, 0.0400, "sudo rm -rf /*", 10),
+            InstakillAttack(Category.LINUX, 0.0725, "I'd just like to interject for a moment...", 5),
         )
 
         fun pickAttack(level: Int, categories: List<Category> = listOf(Category.GENERAL)): Attack {
