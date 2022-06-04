@@ -112,7 +112,7 @@ class Fights(private val bot: Bot) {
 
         fun generateEmbed(): MessageEmbed {
             return Commands.embed("${guild.getMember(initiator)!!.effectiveName} wants to fight ${guild.getMember(victim)!!.effectiveName}!", description = str.toString() +
-                    "\n\n**<@${fight.initiator.discordID}>'s HP:** ${fight.initiator.hp.roundToInt()}\n**<@${fight.victim.discordID}>'s HP:** ${fight.victim.hp.roundToInt()}",
+                    "\n\n**<@${fight.initiator.discordID}>'s HP:** ${fight.initiator.level.run {50.0 + this * 2}.roundToInt()}\n**<@${fight.victim.discordID}>'s HP:** ${fight.victim.level.run {50.0 + this * 2}.roundToInt()}",
                 stripPings = false)
         }
 
