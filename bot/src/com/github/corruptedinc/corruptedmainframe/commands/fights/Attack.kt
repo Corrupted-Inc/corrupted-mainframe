@@ -51,40 +51,38 @@ interface Attack {
             InstakillAttack(listOf(Category.TECHNICAL, Category.FRC), 0.05, "Oops, %v's files have been encrypted!", 0),
 
             // bot only
-            InstakillAttack(Category.BOT, 0.5, "%a atomized %v!", 0),
-            InstakillAttack(Category.BOT, 0.5, "%a liquidated %v!", 0),
-            InstakillAttack(Category.BOT, 0.25, "`DELETE FROM users WHERE name=`%v", 0),
-            InstakillAttack(Category.BOT, 0.5, "%v gazed into %a's cold, dead eyes!", 0),
-            InstakillAttack(Category.BOT, 0.5, "%a invoked its god-like power!", 0),
-            InstakillAttack(Category.BOT, 0.5, "%a erased %v!", 0),
-            InstakillAttack(Category.BOT, 0.5, "%a obliterated %v!", 0),
-            InstakillAttack(Category.BOT, 0.5, "%a pulverised %v!", 0),
-            InstakillAttack(Category.BOT, 0.5, "%a eviscerated %v!", 0),
-            InstakillAttack(Category.BOT, 0.5, "%a vaporized %v!", 0),
-            InstakillAttack(Category.BOT, 0.25, "%a imported `java.lang.reflect`!", 0),
-            InstakillAttack(Category.BOT, 0.1, "%a imported `sun.misc.Unsafe`!", 0),
-            InstakillAttack(Category.BOT, 0.1, "%a compressed some lithium-6 deuteride!", 0),
-            InstakillAttack(Category.BOT, 0.1, "%a is become death, destroyer of worlds!", 0),
-            InstakillAttack(Category.BOT, 0.25, "%a violated the geneva conventions!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.5, "%a atomized %v!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.5, "%a liquidated %v!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.25, "`DELETE FROM users WHERE name=`%v", 0),
+            InstakillAttack(listOf(Category.BOT), 0.5, "%v gazed into %a's cold, dead eyes!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.5, "%a invoked its god-like power!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.5, "%a erased %v!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.5, "%a obliterated %v!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.5, "%a pulverised %v!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.5, "%a eviscerated %v!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.5, "%a vaporized %v!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.1, "%a compressed some lithium-6 deuteride!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.1, "%a is become death, destroyer of worlds!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.25, "%a violated the geneva conventions!", 0),
             
             // LINUX
             // REGULAR ATTACKS
             SimpleAttack(Category.LINUX, 1.0, "%a unleashed the penguins!", 0, 10.0, 1.0, 0.35),
             SimpleAttack(Category.LINUX, 0.5, "%a installed TempleOS on %v's computer!", 2, 15.0, 1.0, 0.3),
-            SimpleAttack(Category.LINUX, 0.5, "%a ranted for 3 hours about systemd!", 5, 30.0, 1.0, 0.75),
+            SimpleAttack(Category.LINUX, 0.5, "%a ranted for %ri2-24 hours about systemd!", 5, 30.0, 1.0, 0.75),
             SimpleAttack(Category.LINUX, 0.5, "%a told %v their rice sucks!", 8, 20.0, 1.0, 0.5),
-            SimpleAttack(Category.LINUX, 0.25, "%a ran rm -rf /home/%v", 15, 60.0, 2.0, 0.85),
+            SimpleAttack(Category.LINUX, 0.25, "%a ran `rm -rf /home/`%v", 15, 60.0, 2.0, 0.85),
             SimpleAttack(Category.LINUX, 0.5, "%a installed a virus on %v's computer", 0, 15.0, 1.0, 0.5),
             SimpleAttack(Category.LINUX, 0.5, "%a messed with %v's grub config!", 6, 45.0, 1.0, 0.5),
             SimpleAttack(Category.LINUX, 0.5, "%a exploited dirtycow!", 20, 75.0, 2.0, 0.5),
             // CRITICAL MISSES LINUX
-            SimpleAttack(Category.LINUX, 0.2, "%v attempted to delete a virus but ran rm -rf on root!", 0, 15.0, 1.0, 0.5),
-            SimpleAttack(Category.LINUX, 0.15, "%v failed their Gentoo install 7 days in!", 8, 45.0, 2.0, 0.5),
+            SimpleAttack(Category.LINUX, 0.2, "%v attempted to delete a virus but ran `rm -rf` on root!", 0, 15.0, 1.0, 0.5),
+            SimpleAttack(Category.LINUX, 0.15, "%v failed their Gentoo install %ri7-14 days in!", 8, 45.0, 2.0, 0.5),
             SimpleAttack(Category.LINUX, 0.2, "%v couldn't run their game with proton and cried!", 0, 10.0, 1.0, 0.5),
             SimpleAttack(Category.LINUX, 0.15, "%v accidentally deleted /bin/!", 0, 20.0, 1.0, 0.5),
             // INSTANT LINUX
             InstakillAttack(Category.LINUX, 0.0125, "%a zeroed %v's hard-drive!", 15),
-            InstakillAttack(Category.LINUX, 0.0100, "sudo rm -rf /*", 10),
+            InstakillAttack(Category.LINUX, 0.0100, "`sudo rm -rf /*`", 10),
             InstakillAttack(Category.LINUX, 0.0025, "I'd just like to interject for a moment...", 5),
             // TODO: Balance damage and scaling (Probably won't happen, but this way I feel better about myself)
         )
@@ -116,11 +114,11 @@ interface Attack {
         constructor(odds: Double, format: String, minLevel: Int, minDamage: Double, damageScaling: Double, randomFactor: Double) : this(listOf(Category.GENERAL), odds, format, minLevel, minDamage, damageScaling, randomFactor)
 
         override fun damage(level: Int): Double {
-            return (minDamage + (level - minLevel) * damageScaling).runIf(randomFactor != 0.0) { this * nextDouble(1.0 - randomFactor, 1.0 + randomFactor) }
+            return (minDamage + (level - minLevel) * damageScaling * 2).runIf(randomFactor != 0.0) { this * nextDouble(1.0 - randomFactor, 1.0 + randomFactor) }
         }
 
         override fun usable(level: Int, categories: List<Category>): Boolean {
-            return categories.containsAll(category) && level >= minLevel
+            return category.intersect(categories.toSet()).isNotEmpty() && level >= minLevel
         }
 
         override fun odds(level: Int): Double {
@@ -137,7 +135,7 @@ interface Attack {
         constructor(category: Category, odds: Double, format: String, minLevel: Int) : this(listOf(category), odds, format, minLevel)
 
         override fun usable(level: Int, categories: List<Category>): Boolean {
-            return categories.containsAll(category) && level >= minLevel
+            return category.intersect(categories.toSet()).isNotEmpty() && level >= minLevel
         }
 
         override fun string(a: String, v: String): String {

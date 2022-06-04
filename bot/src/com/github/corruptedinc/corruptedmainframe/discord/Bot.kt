@@ -10,6 +10,7 @@ import com.github.corruptedinc.corruptedmainframe.commands.TheBlueAlliance
 import com.github.corruptedinc.corruptedmainframe.commands.fights.Fights
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.plugin.PluginLoader
+import com.github.corruptedinc.corruptedmainframe.utils.Emotes
 import com.github.corruptedinc.corruptedmainframe.utils.PathDrawer
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.injectKTX
@@ -30,6 +31,7 @@ import net.dv8tion.jda.api.requests.GatewayIntent
 import net.dv8tion.jda.api.utils.cache.CacheFlag
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.DatabaseConfig
+import org.jetbrains.exposed.sql.and
 import org.slf4j.Logger
 import org.slf4j.impl.SimpleLogger
 import org.slf4j.impl.SimpleLoggerFactory
@@ -80,6 +82,8 @@ class Bot(val config: Config) {
             audio.gracefulShutdown()
             log.info("Finished, exiting")
         })
+
+        Emotes
 
         jda.listener<ReadyEvent> { event ->
             log.info("Logged in as ${event.jda.selfUser.asTag}")
@@ -156,6 +160,22 @@ class Bot(val config: Config) {
 
         jda.listener<GuildLeaveEvent> { event ->
             database.trnsctn { database.guild(event.guild).currentlyIn = false }
+        }
+
+        jda.listener<MessageReceivedEvent> { event ->
+            val reaction = database.trnsctn {
+                val g = database.guild(event.guild)
+                val u = database.user(event.author)
+                ExposedDatabase.Autoreaction.find { (ExposedDatabase.Autoreactions.guild eq g.id) and (ExposedDatabase.Autoreactions.user eq u.id) }
+                    .singleOrNull()?.reaction
+            } ?: return@listener
+            val isBuiltin = Emotes.isValid(reaction)
+            if (isBuiltin) {
+                event.message.addReaction(reaction).await()
+            } else {
+                val found = event.guild.getEmoteById(reaction.filter { it.isDigit() }) ?: return@listener
+                event.message.addReaction(found).await()
+            }
         }
     }
 

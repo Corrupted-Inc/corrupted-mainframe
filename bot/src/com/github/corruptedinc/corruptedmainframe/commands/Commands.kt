@@ -11,7 +11,10 @@ import dev.minn.jda.ktx.Message
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.interactions.replyPaginator
 import dev.minn.jda.ktx.listener
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.GuildChannel
@@ -28,15 +31,15 @@ import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.commands.CommandInteraction
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.SlashCommandInteraction
-import net.dv8tion.jda.api.interactions.commands.build.*
-import net.dv8tion.jda.api.interactions.commands.build.Commands.*
+import net.dv8tion.jda.api.interactions.commands.build.CommandData
+import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
+import net.dv8tion.jda.api.interactions.commands.build.Commands.user
+import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
 import net.dv8tion.jda.api.interactions.commands.context.MessageContextInteraction
 import net.dv8tion.jda.api.interactions.commands.context.UserContextInteraction
 import org.intellij.lang.annotations.Language
-import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
-import org.jetbrains.exposed.sql.transactions.transactionManager
+import org.jetbrains.exposed.sql.Op
+import org.jetbrains.exposed.sql.and
 import org.ocpsoft.prettytime.nlp.PrettyTimeParser
 import java.awt.Color
 import java.time.*
@@ -45,6 +48,8 @@ import java.time.temporal.TemporalAccessor
 import java.util.*
 import kotlin.math.roundToLong
 import kotlin.random.Random
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.ExperimentalTime
 import kotlin.time.toKotlinDuration
 
 class Commands(val bot: Bot) {
@@ -134,7 +139,7 @@ class Commands(val bot: Bot) {
                         } else {
                             it.replyEmbeds(embed).ephemeral().await()
                         }
-                        bot.log.error("Error in command '${data.name}':\n" + e.stackTraceToString())
+                        bot.log.error("Error in command '${data.name}':\nCommand: ${it.commandPath} ${it.options.joinToString { c -> "${c.name}: ${c.asString}" }}\n" + e.stackTraceToString())
                     }
                 } catch (ignored: PermissionException) {}  // nested try/catch is my favorite
                 bot.database.trnsctn {
@@ -283,6 +288,7 @@ class Commands(val bot: Bot) {
         }
     }
 
+    @OptIn(ExperimentalTime::class)
     @Suppress("ComplexMethod", "LongMethod", "ThrowsCount")
     fun registerAll() {
         register(slash("invite", "Invite Link")) {
@@ -461,7 +467,7 @@ class Commands(val bot: Bot) {
 
                 pts.fightCooldown = now
             }
-            bot.fights.sendFight(event, attacker.user, user.user, guild)
+            bot.fights.sendFight(event, attacker.user, user.user, guild, false)
         }
 
         // TODO better parsing
@@ -747,7 +753,70 @@ class Commands(val bot: Bot) {
 
                 pts.fightCooldown = now
             }
-            bot.fights.sendFight(event, attacker.user, user, guild)
+            bot.fights.sendFight(event, attacker.user, user, guild, false)
+        }
+
+        register(
+            slash("autoreact", "Automatically react to a user's message")
+                .addSubcommands(SubcommandData("list", "Lists the autoreactions"))
+                .addSubcommands(SubcommandData("add", "Add an autoreaction").addOption(OptionType.USER, "user", "The user", true).addOption(OptionType.STRING, "reaction", "The reaction", true))
+                .addSubcommands(SubcommandData("remove", "Remove an autoreaction").addOption(OptionType.USER, "user", "The user", true).addOption(OptionType.STRING, "reaction", "The reaction", true))
+        ) { event ->
+            val guild = event.guild!!
+            when (event.subcommandName) {
+                "list" -> {
+                    val autoreactions = bot.database.trnsctn {
+                        val g = bot.database.guild(guild)
+                        val selection = ExposedDatabase.Autoreaction.find { ExposedDatabase.Autoreactions.guild eq g.id }
+                        selection.map { it.user.discordId to it.reaction }
+                    }.map { Row(guild.getMemberById(it.first)?.effectiveName ?: "null", it.second) }
+
+                    val content = table((listOf(Row("Name", "Reaction")) + autoreactions).toTypedArray())
+                    val embeds = content.chunked(1000).map { embed("Autoreactions", description = it) }.toTypedArray()
+
+                    event.replyPaginator(pages = embeds, expireAfter = 5L.minutes)
+                }
+                "add" -> {
+//                    assertAdmin(event)
+                    val user = event.getOption("user")!!.asMember!!
+                    val reaction = event.getOption("reaction")!!.asString.dropWhile { it.isWhitespace() }.dropLastWhile { it.isWhitespace() }
+                    val r = event.guild!!.getEmotesByName(reaction, true).singleOrNull()?.asMention
+                        ?: reaction.filter { it.isDigit() }.toLongOrNull()?.let { event.guild!!.getEmoteById(it)?.asMention }
+                        ?: if (Emotes.isValid(reaction)) reaction else null
+//                        ?: Emotes.builtinEmojiByNameFuzzy(reaction).first()
+                    r ?: throw CommandException("No emoji found!")
+                    bot.database.trnsctn {
+                        val u = bot.database.user(user.user)
+                        val g = bot.database.guild(guild)
+
+                        if (g.starboardReaction == r) throw CommandException("nice try")
+                        ExposedDatabase.Autoreaction.new {
+                            this.user = u
+                            this.guild = g
+                            this.reaction = r
+                        }
+                    }
+                    event.replyEmbeds(embed("Added Autoreaction", description = "<@${user.idLong}>'s messages will be reacted to with $r", stripPings = false)).await()
+                }
+                "remove" -> {
+//                    assertAdmin(event)
+                    val user = event.getOption("user")!!.asMember!!
+                    val reaction = event.getOption("reaction")!!.asString.dropWhile { it.isWhitespace() }.dropLastWhile { it.isWhitespace() }
+                    val r = event.guild!!.getEmotesByName(reaction, true).singleOrNull()?.asMention
+                        ?: reaction.filter { it.isDigit() }.toLongOrNull()?.let { event.guild!!.getEmoteById(it)?.asMention }
+                        ?: if (Emotes.isValid(reaction)) reaction else null
+//                        ?: Emotes.builtinEmojiByNameFuzzy(reaction).first()
+                    r ?: throw CommandException("No emoji found!")
+                    val res = bot.database.trnsctn {
+                        val u = bot.database.user(user.user)
+                        val g = bot.database.guild(guild)
+                        ExposedDatabase.Autoreaction.find { (ExposedDatabase.Autoreactions.guild eq g.id) and (ExposedDatabase.Autoreactions.user eq u.id) and (ExposedDatabase.Autoreactions.reaction eq r) }
+                            .singleOrNull()?.delete()?.run { true } ?: false
+                    }
+                    if (!res) throw CommandException("No existing reaction")
+                    event.replyEmbeds(embed("Removed Autoreaction", description = "<@${user.idLong}>'s messages will no longer be reacted to with $r", stripPings = false)).await()
+                }
+            }
         }
 
         registerAudioCommands(bot, this)

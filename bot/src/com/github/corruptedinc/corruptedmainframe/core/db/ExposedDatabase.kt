@@ -37,7 +37,8 @@ class ExposedDatabase(val db: Database, bot: Bot) {
                 Reminders,
                 StarredMessages,
                 CommandRuns,
-                *frcDB.tables()
+                *frcDB.tables(),
+                Autoreactions
             )
         }
     }
@@ -210,9 +211,31 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         var done        by ImageHashJobs.done
     }
 
-    fun user(user: User) = transaction(db) { UserM.find {
-        UserMs.discordId eq user.idLong
-    }.firstOrNull() ?: UserM.new { discordId = user.idLong; botAdmin = false; banned = false } }
+    object Quotes : LongIdTable(name = "quotes") {
+        val guild = reference("guild", GuildMs)
+        val user = reference("user", UserMs)
+        val content = text("content")
+    }
+
+    object Autoreactions : LongIdTable(name = "autoreactions") {
+        val guild = reference("guild", GuildMs).index()
+        val user = reference("user", UserMs).index()
+        val reaction = varchar("reaction", VARCHAR_MAX_LENGTH)
+    }
+
+    class Autoreaction(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<Autoreaction>(Autoreactions)
+
+        var guild    by GuildM referencedOn Autoreactions.guild
+        var user     by UserM referencedOn Autoreactions.user
+        var reaction by Autoreactions.reaction
+    }
+
+    fun user(user: User) = user(user.idLong)
+
+    fun user(user: Long) = transaction(db) { UserM.find {
+        UserMs.discordId eq user
+    }.firstOrNull() ?: UserM.new { discordId = user; botAdmin = false; banned = false } }
 
     fun guild(guild: Guild) = guild(guild.idLong)
 
