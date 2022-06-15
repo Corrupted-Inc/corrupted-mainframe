@@ -67,13 +67,13 @@ interface Attack {
             
             // LINUX
             // REGULAR ATTACKS
-            SimpleAttack(Category.LINUX, 1.0, "%a unleashed the penguins!", 0, 10.0, 1.0, 0.35),
+            SimpleAttack(Category.LINUX, 1.0, "%a unleashed the penguins!", 0, 10.0, 1.0, 0.45),
             SimpleAttack(Category.LINUX, 0.5, "%a installed TempleOS on %v's computer!", 2, 15.0, 1.0, 0.3),
             SimpleAttack(Category.LINUX, 0.5, "%a ranted for %ri2-24 hours about systemd!", 5, 30.0, 1.0, 0.75),
             SimpleAttack(Category.LINUX, 0.5, "%a told %v their rice sucks!", 8, 20.0, 1.0, 0.5),
             SimpleAttack(Category.LINUX, 0.25, "%a ran `rm -rf /home/`%v", 15, 60.0, 2.0, 0.85),
             SimpleAttack(Category.LINUX, 0.5, "%a installed a virus on %v's computer", 0, 15.0, 1.0, 0.5),
-            SimpleAttack(Category.LINUX, 0.5, "%a messed with %v's grub config!", 6, 45.0, 1.0, 0.5),
+            SimpleAttack(Category.LINUX, 0.5, "%a messed with %v's grub config!", 20, 45.0, 1.0, 0.5),
             SimpleAttack(Category.LINUX, 0.5, "%a exploited dirtycow!", 20, 75.0, 2.0, 0.5),
             // CRITICAL MISSES LINUX
             SimpleAttack(Category.LINUX, 0.2, "%v attempted to delete a virus but ran `rm -rf` on root!", 0, 15.0, 1.0, 0.5),
