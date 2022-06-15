@@ -467,7 +467,7 @@ class Commands(val bot: Bot) {
 
                 pts.fightCooldown = now
             }
-            bot.fights.sendFight(event, attacker.user, user.user, guild, false)
+            bot.fights.sendFight(event, attacker.user, user.user, guild)
         }
 
         // TODO better parsing
@@ -753,7 +753,7 @@ class Commands(val bot: Bot) {
 
                 pts.fightCooldown = now
             }
-            bot.fights.sendFight(event, attacker.user, user, guild, false)
+            bot.fights.sendFight(event, attacker.user, user, guild)
         }
 
         register(

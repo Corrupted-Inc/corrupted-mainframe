@@ -26,22 +26,17 @@ class Fights(private val bot: Bot) {
     data class User(val discordID: Long, val level: Int, val isBot: Boolean, var hp: Double)
 
     inner class Fight(val initiator: User, val victim: User, val events: List<FightEvent>) {
-        constructor(initiator: User, victim: User, bullying: Boolean, vararg categories: Attack.Category) : this(initiator, victim, kotlin.run {
+        constructor(initiator: User, victim: User, vararg categories: Attack.Category) : this(initiator, victim, kotlin.run {
             initiator.hp = 50.0 + initiator.level * 2
             victim.hp = 50.0 + victim.level * 2
 
             val e = mutableListOf<FightEvent>()
 
-            if (victim.isBot || (bullying && bot.database.user(victim.discordID).botAdmin)) {
-                val attack = Attack.pickAttack(0, listOf(if (bullying) Attack.Category.BULLYING else Attack.Category.BOT))
+            if (victim.isBot) {
+                val attack = Attack.pickAttack(0, listOf(Attack.Category.BOT))
                 val damage = attack.damage(0)
                 e.add(FightEvent.AttackEvent(victim, initiator, attack, damage, 0.0, victim.hp))
                 e.add(FightEvent.WinEvent(victim, initiator, 0.0, 0.0, 0.0, victim.hp))
-            } else if (bullying) {
-                val attack = Attack.pickAttack(0, listOf(Attack.Category.BOT))
-                val damage = attack.damage(0)
-                e.add(FightEvent.AttackEvent(initiator, victim, attack, damage, 0.0, initiator.hp))
-                e.add(FightEvent.WinEvent(initiator, victim, 0.0, 0.0, 0.0, initiator.hp))
             } else {
                 var winner: User? = null
 
@@ -100,11 +95,11 @@ class Fights(private val bot: Bot) {
         }
     }
 
-    suspend fun sendFight(event: CommandInteraction, initiator: net.dv8tion.jda.api.entities.User, victim: net.dv8tion.jda.api.entities.User, guild: Guild, bullying: Boolean) {
+    suspend fun sendFight(event: CommandInteraction, initiator: net.dv8tion.jda.api.entities.User, victim: net.dv8tion.jda.api.entities.User, guild: Guild) {
         val initiatorU = User(initiator.idLong, bot.leveling.level(initiator, guild).toInt(), initiator.isBot, 0.0)
         val victimU = User(victim.idLong, bot.leveling.level(victim, guild).toInt(), victim.isBot, 0.0)
         val fight = bot.database.trnsctn {
-            Fight(initiatorU, victimU, bullying, *bot.database.guild(guild).fightCategoryList.toList().toTypedArray())
+            Fight(initiatorU, victimU, *bot.database.guild(guild).fightCategoryList.toList().toTypedArray())
         }
 
         val attackerXPGain = fight.events.last().run { if (this is FightEvent.TieEvent) this.xpGain else (if ((this as FightEvent.WinEvent).winner.discordID == initiator.idLong) winnerXPGain else loserXPGain) }
@@ -117,7 +112,7 @@ class Fights(private val bot: Bot) {
         val str = StringBuilder()
 
         fun generateEmbed(): MessageEmbed {
-            return Commands.embed("${guild.getMember(initiator)!!.effectiveName} wants to ${if (bullying) "bully" else "fight"} ${guild.getMember(victim)!!.effectiveName}!", description = str.toString() +
+            return Commands.embed("${guild.getMember(initiator)!!.effectiveName} wants to fight ${guild.getMember(victim)!!.effectiveName}!", description = str.toString() +
                     "\n\n**<@${fight.initiator.discordID}>'s HP:** ${fight.initiator.hp.roundToInt()}\n**<@${fight.victim.discordID}>'s HP:** ${fight.victim.hp.roundToInt()}",
                 stripPings = false)
         }

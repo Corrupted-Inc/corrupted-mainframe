@@ -162,21 +162,24 @@ class Bot(val config: Config) {
             database.trnsctn { database.guild(event.guild).currentlyIn = false }
         }
 
-        jda.listener<MessageReceivedEvent> { event ->
-            val reaction = database.trnsctn {
-                val g = database.guild(event.guild)
-                val u = database.user(event.author)
-                ExposedDatabase.Autoreaction.find { (ExposedDatabase.Autoreactions.guild eq g.id) and (ExposedDatabase.Autoreactions.user eq u.id) }
-                    .singleOrNull()?.reaction
-            } ?: return@listener
-            val isBuiltin = Emotes.isValid(reaction)
-            if (isBuiltin) {
-                event.message.addReaction(reaction).await()
-            } else {
-                val found = event.guild.getEmoteById(reaction.filter { it.isDigit() }) ?: return@listener
-                event.message.addReaction(found).await()
-            }
-        }
+        // disabled for the time being
+//        jda.listener<MessageReceivedEvent> { event ->
+//            val reaction = database.trnsctn {
+//                val g = database.guild(event.guild)
+//                val u = database.user(event.author)
+//                ExposedDatabase.Autoreaction.find { (ExposedDatabase.Autoreactions.guild eq g.id) and (ExposedDatabase.Autoreactions.user eq u.id) }
+//                    .map { it.reaction }
+//            }
+//            reaction.forEach { r ->
+//                val isBuiltin = Emotes.isValid(r)
+//                if (isBuiltin) {
+//                    event.message.addReaction(r).await()
+//                } else {
+//                    val found = event.guild.getEmoteById(r.filter { it.isDigit() }) ?: return@listener
+//                    event.message.addReaction(found).await()
+//                }
+//            }
+//        }
     }
 
     init {
