@@ -1,6 +1,7 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.github.corruptedinc.corruptedmainframe.math.InfixNotationParser
 import com.github.corruptedinc.corruptedmainframe.utils.Row
@@ -202,7 +203,7 @@ fun registerUtilityCommands(bot: Bot) {
             "list" -> {
                 val output = mutableListOf<MessageEmbed.Field>()
                 bot.database.trnsctn {
-                    val user = bot.database.user(event.user)
+                    val user = event.user.m
                     val reminders = ExposedDatabase.Reminder.find { ExposedDatabase.Reminders.user eq user.id }
                     for (item in reminders) {
                         output.add(
@@ -234,7 +235,7 @@ fun registerUtilityCommands(bot: Bot) {
 
                 if (name == "all") throw CommandException("Name cannot be 'all'!")
 
-                val zone = bot.database.trnsctn { bot.database.user(event.user).timezone }
+                val zone = bot.database.trnsctn { event.user.m.timezone }
 
                 val parser = PrettyTimeParser(TimeZone.getTimeZone(ZoneId.of(zone)))
 
@@ -247,7 +248,7 @@ fun registerUtilityCommands(bot: Bot) {
                 if (instant.isBefore(Instant.now())) throw CommandException("Can't add a reminder in the past!")
 
                 bot.database.trnsctn {
-                    val user = bot.database.user(event.user)
+                    val user = event.user.m
 
                     if (ExposedDatabase.Reminder.find { (ExposedDatabase.Reminders.user eq user.id) and (ExposedDatabase.Reminders.text eq name) }
                             .firstOrNull() != null)
@@ -277,7 +278,7 @@ fun registerUtilityCommands(bot: Bot) {
 
                 if (name == "all") {
                     val c = bot.database.trnsctn {
-                        val user = bot.database.user(event.user)
+                        val user = event.user.m
                         var count = 0
                         for (r in user.reminders) {
                             r.delete()
@@ -289,7 +290,7 @@ fun registerUtilityCommands(bot: Bot) {
                     return@register
                 }
                 val time = bot.database.trnsctn {
-                    val user = bot.database.user(event.user)
+                    val user = event.user.m
                     val reminder = ExposedDatabase.Reminder.find {
                         (ExposedDatabase.Reminders.user eq user.id) and (ExposedDatabase.Reminders.text eq name)
                     }.singleOrNull() ?: throw CommandException("Couldn't find a reminder with that name!")
@@ -304,7 +305,7 @@ fun registerUtilityCommands(bot: Bot) {
 
     bot.commands.autocomplete("reminders/remove", "name") { value, event ->
         val reminders = bot.database.trnsctn {
-            val u = bot.database.user(event.user)
+            val u = event.user.m
             u.reminders.map { it.text }
         }.sortedBy { biasedLevenshteinInsensitive(it, value) }
 
@@ -326,7 +327,7 @@ fun registerUtilityCommands(bot: Bot) {
                     "Make sure you specify it in either region-based (i.e. America/New_York) or UTC+n format")
         }
         bot.database.trnsctn {
-            val user = bot.database.user(event.user)
+            val user = event.user.m
             user.timezone = zone
         }
         event.replyEmbeds(Commands.embed("Set your timezone to $zone")).ephemeral().await()

@@ -4,6 +4,7 @@ import com.github.corruptedinc.corruptedmainframe.commands.Commands
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.stripPings
 import com.github.corruptedinc.corruptedmainframe.commands.Leveling
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.listener
 import net.dv8tion.jda.api.entities.Message
@@ -22,7 +23,7 @@ class Starboard(private val bot: Bot) {
                     event.reaction.removeReaction().queue({}, {})  // probably handles errors?
                     return@trnsctn null
                 }
-                val g = bot.database.guild(event.guild)
+                val g = event.guild.m
                 g.starboardChannel ?: return@trnsctn null
                 if (event.reactionEmote.name != g.starboardReaction) return@trnsctn null
                 if (event.channel.idLong == g.starboardChannel) return@trnsctn null
@@ -53,14 +54,14 @@ class Starboard(private val bot: Bot) {
 
     suspend fun star(message: Message) {
         if (bot.database.trnsctn {
-                val g = bot.database.guild(message.guild)
+                val g = message.guild.m
                 if (g.starredMessages.any { it.messageID == message.idLong }) return@trnsctn true
                 ExposedDatabase.StarredMessage.new {
                     this.guild = g.id
                     this.messageID = message.idLong
                 }
                 return@trnsctn false
-        }) return
+            }) return
 
         bot.leveling.addPoints(message.author,
             bot.leveling.starboardPoints(bot.leveling.level(message.author, message.guild)), message.textChannel)
@@ -74,7 +75,7 @@ class Starboard(private val bot: Bot) {
             stripPings = false
         )
         val channel = message.guild.getTextChannelById(bot.database.trnsctn {
-            val g = bot.database.guild(message.guild)
+            val g = message.guild.m
             g.starboardChannel
         }!!)!!
         channel.sendMessageEmbeds(embed).await()

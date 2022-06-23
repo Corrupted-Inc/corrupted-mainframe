@@ -1,5 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.core.db
 
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import net.dv8tion.jda.api.entities.Guild
@@ -50,14 +51,12 @@ class AudioDB(val database: ExposedDatabase, val bot: Bot) {
     fun musicStates() = database.trnsctn { MusicState.all().toList() }
 
     fun musicStates(guild: Guild): List<MusicState> {
-        val guildm = database.guild(guild)
-        return database.trnsctn { MusicState.find { MusicStates.guild eq guildm.id }.toList() }
+        return database.trnsctn { MusicState.find { MusicStates.guild eq guild.m.id }.toList() }
     }
 
     fun musicState(guild: Guild, channel: VoiceChannel): MusicState? {
-        val guildm = database.guild(guild)
         return database.trnsctn { MusicState.find {
-            (MusicStates.guild eq guildm.id) and (MusicStates.channel eq channel.idLong)
+            (MusicStates.guild eq guild.m.id) and (MusicStates.channel eq channel.idLong)
         }.firstOrNull() }
     }
 
@@ -122,7 +121,6 @@ class AudioDB(val database: ExposedDatabase, val bot: Bot) {
     }
 
     fun createMusicState(channel: VoiceChannel, tracks: List<String>): MusicState {
-        val guild = database.guild(channel.guild)
         return database.trnsctn {
             val oldState = MusicState.find { MusicStates.channel eq channel.idLong }.firstOrNull()
             if (oldState != null) clearMusicState(oldState)
@@ -133,7 +131,7 @@ class AudioDB(val database: ExposedDatabase, val bot: Bot) {
                 @SuppressWarnings("MagicNumber")  // again, I am not making a 100% constant
                 volume = 100
                 paused = false
-                this.guild = guild
+                this.guild = channel.guild.m
                 this.channel = channel.idLong
             }
 

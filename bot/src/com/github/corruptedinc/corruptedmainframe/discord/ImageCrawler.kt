@@ -1,6 +1,7 @@
 package com.github.corruptedinc.corruptedmainframe.discord
 
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.repostdetector.ImageHasher
 import dev.minn.jda.ktx.await
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +20,7 @@ class ImageCrawler(private val bot: Bot) {
 
     fun crawl(guild: Guild) {
         val jobs = bot.database.trnsctn {
-            val g = bot.database.guild(guild)
+            val g = guild.m
             val channels = guild.textChannels
                 .filter { guild.selfMember.hasPermission(it, Permission.MESSAGE_HISTORY, Permission.VIEW_CHANNEL) }
                 .map { it.idLong }
@@ -44,7 +45,7 @@ class ImageCrawler(private val bot: Bot) {
         var isDone = false
 
         val jobID = bot.database.trnsctn {
-            val g = bot.database.guild(channel.guild)
+            val g = channel.guild.m
             val existing = ExposedDatabase.ImageHashJob.find { ExposedDatabase.ImageHashJobs.channel eq chanID }
                 .toList()
             if (existing.size == 1) {

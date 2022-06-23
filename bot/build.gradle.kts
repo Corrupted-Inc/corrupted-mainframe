@@ -40,12 +40,6 @@ dependencies {
     implementation("dev.brachtendorf:JImageHash:1.0.0")
 }
 
-javafx {
-    version = "12"
-    modules("javafx.media")
-    configuration = "implementation"
-}
-
 detekt {
     buildUponDefaultConfig = true // preconfigure defaults
     allRules = false // activate all available (even unstable) rules.
@@ -111,5 +105,6 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
     kotlinOptions {
         freeCompilerArgs = freeCompilerArgs + "-Xopt-in=kotlin.RequiresOptIn"
         freeCompilerArgs = freeCompilerArgs + "-opt-in=kotlin.ExperimentalStdlibApi"
+        freeCompilerArgs = freeCompilerArgs + "-Xcontext-receivers"
     }
 }

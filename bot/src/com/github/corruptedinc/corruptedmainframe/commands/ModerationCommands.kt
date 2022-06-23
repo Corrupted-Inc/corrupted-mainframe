@@ -2,6 +2,7 @@ package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.commands.fights.Attack
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoleMessage.Companion
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoleMessages
@@ -88,12 +89,15 @@ fun registerCommands(bot: Bot) {
         builder.setTitle("Statistics and Info")
         builder.setThumbnail(event.guild?.iconUrl)
         val id = bot.jda.selfUser.id
-        builder.setDescription("""
+        val ping = bot.jda.restPing.await()
+        bot.database.trnsctn {
+            builder.setDescription(
+                """
                 **Bot Info**
                 Guilds: ${bot.database.guildCount()}
                 Commands: ${bot.commands.newCommands.size}
                 Gateway ping: ${bot.jda.gatewayPing}ms
-                Rest ping: ${bot.jda.restPing.await()}ms
+                Rest ping: ${ping}ms
                 Uptime: ${Duration.between(bot.startTime, Instant.now()).toHumanReadable()}
                 Git: ${bot.config.gitUrl}
                 Invite: [Admin invite](${Commands.adminInvite(id)})  [basic permissions](${Commands.basicInvite(id)})
@@ -104,7 +108,9 @@ fun registerCommands(bot: Bot) {
                 Creation Date: <t:${event.guild?.timeCreated?.toEpochSecond()}> UTC
                 Members: ${event.guild?.memberCount}
                 Boost Level: ${event.guild?.boostTier?.name?.lowercase()?.replace('_', ' ')}
-            """.trimIndent())
+            """.trimIndent()
+            )
+        }
         event.replyEmbeds(builder.build()).await()
     }
 
@@ -207,7 +213,7 @@ fun registerCommands(bot: Bot) {
                 // don't do expensive API calls within a transaction
                 val output = mutableListOf<Pair<Long, MutableList<Pair<String, Long>>>>()
                 bot.database.trnsctn {
-                    val g = bot.database.guild(event.guild!!)
+                    val g = event.guild!!.m
                     for (item in g.autoRoles) {
                         val l = mutableListOf<Pair<String, Long>>()
                         output.add(Pair(item.message, l))
@@ -375,7 +381,7 @@ fun registerCommands(bot: Bot) {
                 val threshold = event.getOption("threshold")?.asLong?.coerceIn(0, Int.MAX_VALUE.toLong())?.toInt()
                     ?: ExposedDatabase.STARBOARD_THRESHOLD_DEFAULT
                 bot.database.trnsctn {
-                    val g = bot.database.guild(event.guild ?: return@trnsctn)
+                    val g = (event.guild ?: return@trnsctn).m
                     g.starboardChannel = channel.idLong
                     g.starboardReaction = reaction.name
                     g.starboardThreshold = threshold
@@ -389,7 +395,7 @@ fun registerCommands(bot: Bot) {
             }
             "disable" -> {
                 bot.database.trnsctn {
-                    val g = bot.database.guild(event.guild!!)
+                    val g = event.guild!!.m
                     g.starboardChannel = null
                 }
                 event.replyEmbeds(Commands.embed("Starboard", description = "Starboard disabled.")).ephemeral().await()
@@ -397,7 +403,7 @@ fun registerCommands(bot: Bot) {
             "remove" -> {
                 val msgID = event.getOption("link")!!.asString.substringAfterLast('/')
                 val chanID = bot.database.trnsctn {
-                    val g = bot.database.guild(event.guild!!)
+                    val g = event.guild!!.m
                     g.starboardChannel
                 }
                 val channel = event.guild?.getTextChannelById(chanID
@@ -424,7 +430,7 @@ fun registerCommands(bot: Bot) {
             }
             "threshold" -> {
                 bot.database.trnsctn {
-                    val g = bot.database.guild(event.guild!!)
+                    val g = event.guild!!.m
                     g.starboardThreshold = event.getOption("threshold")!!.asLong
                         .coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
                 }
@@ -480,7 +486,7 @@ fun registerCommands(bot: Bot) {
         if (seconds !in sRange || seconds == 60.0 || minutes !in mRange || hours !in hRange) throw CommandException("Time must be less than 6:59:59!")
         val secs = seconds + (minutes * 60) + (hours * 3600)
         bot.database.trnsctn {
-            val guild = bot.database.guild(event.guild!!)
+            val guild = event.guild!!.m
             guild.fightCooldown = Duration.ofMillis((secs * 1000).roundToLong())
         }
         event.replyEmbeds(Commands.embed("Cooldown Set")).ephemeral().await()
@@ -495,7 +501,7 @@ fun registerCommands(bot: Bot) {
         val bitmask = categories.fold(0UL) { a, b -> a or b.bitmask }
 
         bot.database.trnsctn {
-            val g = bot.database.guild(event.guild!!)
+            val g = event.guild!!.m
             g.fightCategories = bitmask
         }
 

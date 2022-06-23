@@ -4,6 +4,7 @@ import com.github.corruptedinc.corruptedmainframe.commands.CommandException
 import com.github.corruptedinc.corruptedmainframe.commands.Commands
 import com.github.corruptedinc.corruptedmainframe.commands.Leveling
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import dev.minn.jda.ktx.await
 import kotlinx.coroutines.delay
@@ -103,7 +104,7 @@ class Fights(private val bot: Bot) {
         val initiatorU = User(initiator.idLong, bot.leveling.level(initiator, guild).toInt(), initiator.isBot, 0.0)
         val victimU = User(victim.idLong, bot.leveling.level(victim, guild).toInt(), victim.isBot, 0.0)
         val fight = bot.database.trnsctn {
-            Fight(initiatorU, victimU, *bot.database.guild(guild).fightCategoryList.toList().toTypedArray())
+            Fight(initiatorU, victimU, *guild.m.fightCategoryList.toList().toTypedArray())
         }
 
         val attackerXPGain = fight.events.last().run { if (this is FightEvent.TieEvent) this.xpGain else (if ((this as FightEvent.WinEvent).winner.discordID == initiator.idLong) winnerXPGain else loserXPGain) }
@@ -158,9 +159,11 @@ class Fights(private val bot: Bot) {
 //                throw CommandException("Can't fight someone more than 5 levels lower than you!")
 
             bot.database.trnsctn {
-                val u = bot.database.user(attacker.user)
-                val g = bot.database.guild(guild)
-                val pts = ExposedDatabase.Point.find { (ExposedDatabase.Points.user eq u.id) and (ExposedDatabase.Points.guild eq g.id) }.first()
+                val u = attacker.user.m
+                val g = guild.m
+                val pts =
+                    ExposedDatabase.Point.find { (ExposedDatabase.Points.user eq u.id) and (ExposedDatabase.Points.guild eq g.id) }
+                        .first()
                 val cooldown = pts.fightCooldown.plus(g.fightCooldown)
                 val now = Instant.now()
                 if (cooldown.isAfter(now)) {

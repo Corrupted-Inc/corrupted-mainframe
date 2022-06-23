@@ -1,13 +1,10 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
-import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.VARCHAR_MAX_LENGTH
-import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Reminders
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
-import com.github.corruptedinc.corruptedmainframe.math.InfixNotationParser
 import com.github.corruptedinc.corruptedmainframe.utils.*
 import dev.minn.jda.ktx.CoroutineEventListener
-import dev.minn.jda.ktx.Message
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.interactions.replyPaginator
 import dev.minn.jda.ktx.listener
@@ -21,10 +18,7 @@ import net.dv8tion.jda.api.entities.GuildChannel
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.MessageEmbed.Field
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
-import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent
-import net.dv8tion.jda.api.events.interaction.command.MessageContextInteractionEvent
-import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
-import net.dv8tion.jda.api.events.interaction.command.UserContextInteractionEvent
+import net.dv8tion.jda.api.events.interaction.command.*
 import net.dv8tion.jda.api.exceptions.ErrorResponseException
 import net.dv8tion.jda.api.exceptions.PermissionException
 import net.dv8tion.jda.api.interactions.commands.Command
@@ -33,25 +27,13 @@ import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.SlashCommandInteraction
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
-import net.dv8tion.jda.api.interactions.commands.build.Commands.user
-import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
 import net.dv8tion.jda.api.interactions.commands.context.MessageContextInteraction
 import net.dv8tion.jda.api.interactions.commands.context.UserContextInteraction
-import org.intellij.lang.annotations.Language
-import org.jetbrains.exposed.sql.Op
-import org.jetbrains.exposed.sql.and
-import org.ocpsoft.prettytime.nlp.PrettyTimeParser
 import java.awt.Color
-import java.math.MathContext
-import java.math.RoundingMode
 import java.time.*
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAccessor
-import java.util.*
-import kotlin.math.roundToLong
 import kotlin.random.Random
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.ExperimentalTime
 import kotlin.time.toKotlinDuration
 
 class Commands(val bot: Bot) {
@@ -112,139 +94,71 @@ class Commands(val bot: Bot) {
     }
 
     internal val newCommands = mutableListOf<CommandData>()
-    val listeners = mutableListOf<CoroutineEventListener>()
+    private val listeners = mutableListOf<CoroutineEventListener>()
+
+    // I'm not sure why, but it won't compile if I remove the suspend modifier, despite this warning
+    @Suppress("REDUNDANT_INLINE_SUSPEND_FUNCTION_TYPE")
+    private suspend inline fun <T : CommandInteraction> handle(data: CommandData, it: T, lambda: suspend (T) -> Unit) {
+        if (it.name == data.name) {
+            val hook = it.hook
+            val start = System.currentTimeMillis()
+            try {
+                @Suppress("TooGenericExceptionCaught")
+                try {
+                    if (bot.database.bannedT(it.user)) return
+                    lambda(it)
+                } catch (e: CommandException) {
+                    val embed = embed("Error", description = e.message, color = ERROR_COLOR)
+                    if (it.isAcknowledged) {
+                        hook.editOriginalEmbeds(embed).await()
+                    } else {
+                        it.replyEmbeds(embed).ephemeral().await()
+                    }
+                } catch (e: Exception) {
+                    val embed = embed("Internal Error", color = ERROR_COLOR)
+                    if (it.isAcknowledged) {
+                        hook.editOriginalEmbeds(embed).await()
+                    } else {
+                        it.replyEmbeds(embed).ephemeral().await()
+                    }
+                    bot.log.error("Error in command '${data.name}':\n" + e.stackTraceToString())
+                }
+            } catch (ignored: PermissionException) {}  // nested try/catch is my favorite
+            bot.database.trnsctn {
+                val g = it.guild!!.m
+                val u = it.user.m
+
+                ExposedDatabase.CommandRun.new {
+                    this.guild = g.id
+                    this.user = u.id
+                    this.timestamp = Instant.now()
+                    this.command = it.name
+                    this.millis = System.currentTimeMillis() - start
+                }
+            }
+        }
+    }
 
     // TODO custom listener pool that handles exceptions
     // TODO cleaner way than upserting the command every time
     fun register(data: CommandData, lambda: suspend (SlashCommandInteraction) -> Unit) {
         newCommands.add(data)
         listeners.add(bot.jda.listener<SlashCommandInteractionEvent> {
-            if (it.name == data.name) {
-                val hook = it.hook
-                val start = System.currentTimeMillis()
-                try {
-                    @Suppress("TooGenericExceptionCaught")
-                    try {
-                        if (bot.database.banned(it.user)) return@listener
-                        lambda(it)
-                    } catch (e: CommandException) {
-                        val embed = embed("Error", description = e.message, color = ERROR_COLOR)
-                        if (it.isAcknowledged) {
-                            hook.editOriginalEmbeds(embed).await()
-                        } else {
-                            it.replyEmbeds(embed).ephemeral().await()
-                        }
-                    } catch (e: Exception) {
-                        val embed = embed("Internal Error", color = ERROR_COLOR)
-                        if (it.isAcknowledged) {
-                            hook.editOriginalEmbeds(embed).await()
-                        } else {
-                            it.replyEmbeds(embed).ephemeral().await()
-                        }
-                        bot.log.error("Error in command '${data.name}':\nCommand: ${it.commandPath} ${it.options.joinToString { c -> "${c.name}: ${c.asString}" }}\n" + e.stackTraceToString())
-                    }
-                } catch (ignored: PermissionException) {}  // nested try/catch is my favorite
-                bot.database.trnsctn {
-                    val g = bot.database.guild(it.guild!!)
-                    val u = bot.database.user(it.user)
-
-                    ExposedDatabase.CommandRun.new {
-                        this.guild = g.id
-                        this.user = u.id
-                        this.timestamp = Instant.now()
-                        this.command = it.name
-                        this.millis = System.currentTimeMillis() - start
-                    }
-                }
-            }
+            handle(data, it, lambda)
         })
     }
 
     fun registerUser(data: CommandData, lambda: suspend (UserContextInteraction) -> Unit) {
         newCommands.add(data)
         listeners.add(bot.jda.listener<UserContextInteractionEvent> {
-            if (it.name == data.name) {
-                val hook = it.hook
-                val start = System.currentTimeMillis()
-                try {
-                    @Suppress("TooGenericExceptionCaught")
-                    try {
-                        if (bot.database.banned(it.user)) return@listener
-                        lambda(it)
-                    } catch (e: CommandException) {
-                        val embed = embed("Error", description = e.message, color = ERROR_COLOR)
-                        if (it.isAcknowledged) {
-                            hook.editOriginalEmbeds(embed).await()
-                        } else {
-                            it.replyEmbeds(embed).ephemeral().await()
-                        }
-                    } catch (e: Exception) {
-                        val embed = embed("Internal Error", color = ERROR_COLOR)
-                        if (it.isAcknowledged) {
-                            hook.editOriginalEmbeds(embed).await()
-                        } else {
-                            it.replyEmbeds(embed).ephemeral().await()
-                        }
-                        bot.log.error("Error in command '${data.name}':\n" + e.stackTraceToString())
-                    }
-                } catch (ignored: PermissionException) {}  // nested try/catch is my favorite
-                bot.database.trnsctn {
-                    val g = bot.database.guild(it.guild!!)
-                    val u = bot.database.user(it.user)
-
-                    ExposedDatabase.CommandRun.new {
-                        this.guild = g.id
-                        this.user = u.id
-                        this.timestamp = Instant.now()
-                        this.command = it.name
-                        this.millis = System.currentTimeMillis() - start
-                    }
-                }
-            }
+            handle(data, it, lambda)
         })
     }
 
     fun registerMessage(data: CommandData, lambda: suspend (MessageContextInteraction) -> Unit) {
         newCommands.add(data)
         listeners.add(bot.jda.listener<MessageContextInteractionEvent> {
-            if (it.name == data.name) {
-                val hook = it.hook
-                val start = System.currentTimeMillis()
-                try {
-                    @Suppress("TooGenericExceptionCaught")
-                    try {
-                        if (bot.database.banned(it.user)) return@listener
-                        lambda(it)
-                    } catch (e: CommandException) {
-                        val embed = embed("Error", description = e.message, color = ERROR_COLOR)
-                        if (it.isAcknowledged) {
-                            hook.editOriginalEmbeds(embed).await()
-                        } else {
-                            it.replyEmbeds(embed).ephemeral().await()
-                        }
-                    } catch (e: Exception) {
-                        val embed = embed("Internal Error", color = ERROR_COLOR)
-                        if (it.isAcknowledged) {
-                            hook.editOriginalEmbeds(embed).await()
-                        } else {
-                            it.replyEmbeds(embed).ephemeral().await()
-                        }
-                        bot.log.error("Error in command '${data.name}':\n" + e.stackTraceToString())
-                    }
-                } catch (ignored: PermissionException) {}  // nested try/catch is my favorite
-                bot.database.trnsctn {
-                    val g = bot.database.guild(it.guild!!)
-                    val u = bot.database.user(it.user)
-
-                    ExposedDatabase.CommandRun.new {
-                        this.guild = g.id
-                        this.user = u.id
-                        this.timestamp = Instant.now()
-                        this.command = it.name
-                        this.millis = System.currentTimeMillis() - start
-                    }
-                }
-            }
+            handle(data, it, lambda)
         })
     }
 
@@ -283,7 +197,7 @@ class Commands(val bot: Bot) {
 
     fun assertPermissions(event: CommandInteraction, vararg permissions: Permission,
                           channel: GuildChannel = event.guildChannel) {
-        if (bot.database.trnsctn { bot.database.user(event.user).botAdmin }) return
+        if (bot.database.trnsctn { event.user.m.botAdmin }) return
         val member = event.member ?: throw CommandException("Missing permissions!")
         if (!member.getPermissions(channel).toSet().containsAll(permissions.toList())) {
             throw CommandException("Missing permissions!")
@@ -340,55 +254,24 @@ class Commands(val bot: Bot) {
             val sql = event.getOption("sql")!!.asString
             val rollback = event.getOption("commit")?.asBoolean != true
 
-            val output = bot.database.trnsctn {
+            val rows = bot.database.trnsctn {
                 exec(sql) { result ->
-                    val output = mutableListOf<MutableList<String>>()
+                    val output = mutableListOf<Row>()
+                    val r = mutableListOf<String>()
                     while (result.next()) {
-                        output.add(mutableListOf())
                         for (c in 1..result.metaData.columnCount) {
-                            output.last().add(result.getObject(c).toString())
+                            r.add(result.getObject(c).toString())
                         }
+                        output.add(Row(*r.toTypedArray()))
+                        r.clear()
                     }
                     if (rollback) {
                         rollback()
                     }
                     output
                 }
-            }
-            val count = output?.firstOrNull()?.size ?: run { event.reply("empty result").ephemeral().await(); return@register }
-            val columnWidths = IntArray(count)
-
-            for (row in output) {
-                for ((index, item) in row.withIndex()) {
-                    if (item.length > columnWidths[index]) columnWidths[index] = item.length + 1
-                }
-            }
-
-            val outputTable = StringBuilder()
-            coroutineScope {
-                launch(Dispatchers.IO) {
-                    outputTable.append('+')
-                    outputTable.append("-".repeat(columnWidths.sum() + columnWidths.size - 1))
-                    outputTable.append('+')
-                    outputTable.append('\n')
-
-                    for (row in output) {
-                        outputTable.append('|')
-                        for ((index, item) in row.withIndex()) {
-                            outputTable.append(item.padStart(columnWidths[index], ' '))
-                            if (index + 1 in row.indices) outputTable.append('|')
-                        }
-                        outputTable.append('|')
-                        outputTable.append('\n')
-                    }
-                    outputTable.append('+')
-                    outputTable.append("-".repeat(columnWidths.sum() + columnWidths.size - 1))
-                    outputTable.append('+')
-                }
-            }.join()
-
-            val table = outputTable.toString()
-
+            }!!
+            val table = table(rows.toTypedArray()).chunked(1900)
             @Suppress("MagicNumber")
             val pages = table.chunked(1900)
                 .map { embed("a", description = "```\n$it```") }
@@ -397,69 +280,6 @@ class Commands(val bot: Bot) {
             event.replyPaginator(pages = pages.toTypedArray(), Duration.of(BUTTON_TIMEOUT, ChronoUnit.MILLIS)
                 .toKotlinDuration()).ephemeral().await()
         }
-
-//        register(
-//            slash("autoreact", "Automatically react to a user's message")
-//                .addSubcommands(SubcommandData("list", "Lists the autoreactions"))
-//                .addSubcommands(SubcommandData("add", "Add an autoreaction").addOption(OptionType.USER, "user", "The user", true).addOption(OptionType.STRING, "reaction", "The reaction", true))
-//                .addSubcommands(SubcommandData("remove", "Remove an autoreaction").addOption(OptionType.USER, "user", "The user", true).addOption(OptionType.STRING, "reaction", "The reaction", true))
-//        ) { event ->
-//            val guild = event.guild!!
-//            when (event.subcommandName) {
-//                "list" -> {
-//                    val autoreactions = bot.database.trnsctn {
-//                        val g = bot.database.guild(guild)
-//                        val selection = ExposedDatabase.Autoreaction.find { ExposedDatabase.Autoreactions.guild eq g.id }
-//                        selection.map { it.user.discordId to it.reaction }
-//                    }.map { Row(guild.getMemberById(it.first)?.effectiveName ?: "null", it.second) }
-//
-//                    val content = table((listOf(Row("Name", "Reaction")) + autoreactions).toTypedArray())
-//                    val embeds = content.chunked(1000).map { embed("Autoreactions", description = it) }.toTypedArray()
-//
-//                    event.replyPaginator(pages = embeds, expireAfter = 5L.minutes)
-//                }
-//                "add" -> {
-////                    assertAdmin(event)
-//                    val user = event.getOption("user")!!.asMember!!
-//                    val reaction = event.getOption("reaction")!!.asString.dropWhile { it.isWhitespace() }.dropLastWhile { it.isWhitespace() }
-//                    val r = event.guild!!.getEmotesByName(reaction, true).singleOrNull()?.asMention
-//                        ?: reaction.filter { it.isDigit() }.toLongOrNull()?.let { event.guild!!.getEmoteById(it)?.asMention }
-//                        ?: if (Emotes.isValid(reaction)) reaction else null
-////                        ?: Emotes.builtinEmojiByNameFuzzy(reaction).first()
-//                    r ?: throw CommandException("No emoji found!")
-//                    bot.database.trnsctn {
-//                        val u = bot.database.user(user.user)
-//                        val g = bot.database.guild(guild)
-//
-//                        if (g.starboardReaction == r) throw CommandException("nice try")
-//                        ExposedDatabase.Autoreaction.new {
-//                            this.user = u
-//                            this.guild = g
-//                            this.reaction = r
-//                        }
-//                    }
-//                    event.replyEmbeds(embed("Added Autoreaction", description = "<@${user.idLong}>'s messages will be reacted to with $r", stripPings = false)).await()
-//                }
-//                "remove" -> {
-////                    assertAdmin(event)
-//                    val user = event.getOption("user")!!.asMember!!
-//                    val reaction = event.getOption("reaction")!!.asString.dropWhile { it.isWhitespace() }.dropLastWhile { it.isWhitespace() }
-//                    val r = event.guild!!.getEmotesByName(reaction, true).singleOrNull()?.asMention
-//                        ?: reaction.filter { it.isDigit() }.toLongOrNull()?.let { event.guild!!.getEmoteById(it)?.asMention }
-//                        ?: if (Emotes.isValid(reaction)) reaction else null
-////                        ?: Emotes.builtinEmojiByNameFuzzy(reaction).first()
-//                    r ?: throw CommandException("No emoji found!")
-//                    val res = bot.database.trnsctn {
-//                        val u = bot.database.user(user.user)
-//                        val g = bot.database.guild(guild)
-//                        ExposedDatabase.Autoreaction.find { (ExposedDatabase.Autoreactions.guild eq g.id) and (ExposedDatabase.Autoreactions.user eq u.id) and (ExposedDatabase.Autoreactions.reaction eq r) }
-//                            .singleOrNull()?.delete()?.run { true } ?: false
-//                    }
-//                    if (!res) throw CommandException("No existing reaction")
-//                    event.replyEmbeds(embed("Removed Autoreaction", description = "<@${user.idLong}>'s messages will no longer be reacted to with $r", stripPings = false)).await()
-//                }
-//            }
-//        }
 
         registerAudioCommands(bot, this)
         registerCommands(bot)

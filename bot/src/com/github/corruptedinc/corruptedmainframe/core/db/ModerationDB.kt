@@ -1,5 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.core.db
 
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import net.dv8tion.jda.api.entities.*
 import org.jetbrains.exposed.dao.LongEntity
 import org.jetbrains.exposed.dao.LongEntityClass
@@ -38,7 +39,7 @@ class ModerationDB(private val database: ExposedDatabase) {
 
     fun autoRoleMessages(guild: Guild): List<AutoRoleMessage> {
         return database.trnsctn {
-            val guildm = database.guild(guild)
+            val guildm = guild.m
             AutoRoleMessage.find { AutoRoleMessages.guild eq guildm.id }.toList()
         }
     }
@@ -53,7 +54,7 @@ class ModerationDB(private val database: ExposedDatabase) {
 
     fun addAutoRole(message: Message, mapping: Map<String, Long>) {
         database.trnsctn {
-            val guildm = database.guild(message.guild)
+            val guildm = message.guild.m
             val roleSet = AutoRoleMessage.new {
                 this.guild = guildm
                 this.message = message.idLong

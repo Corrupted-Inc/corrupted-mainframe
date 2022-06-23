@@ -7,6 +7,7 @@ import java.math.MathContext
 import java.math.RoundingMode
 
 // The jankinator, perry the platypus!
+// TODO: more advanced engine (equation solving via newton's method, differentiation, numeric integration)
 class InfixNotationParser(precision: Int) {
     private val mc = MathContext(precision, RoundingMode.HALF_UP)
 

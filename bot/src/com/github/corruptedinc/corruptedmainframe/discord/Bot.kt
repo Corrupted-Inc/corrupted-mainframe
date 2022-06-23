@@ -9,6 +9,7 @@ import com.github.corruptedinc.corruptedmainframe.commands.RobotPaths
 import com.github.corruptedinc.corruptedmainframe.commands.TheBlueAlliance
 import com.github.corruptedinc.corruptedmainframe.commands.fights.Fights
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.plugin.PluginLoader
 import com.github.corruptedinc.corruptedmainframe.utils.Emotes
 import com.github.corruptedinc.corruptedmainframe.utils.PathDrawer
@@ -19,7 +20,6 @@ import kotlinx.coroutines.*
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.entities.Activity
 import net.dv8tion.jda.api.entities.ChannelType
-import net.dv8tion.jda.api.entities.Icon
 import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
@@ -31,16 +31,11 @@ import net.dv8tion.jda.api.requests.GatewayIntent
 import net.dv8tion.jda.api.utils.cache.CacheFlag
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.DatabaseConfig
-import org.jetbrains.exposed.sql.and
 import org.slf4j.Logger
-import org.slf4j.impl.SimpleLogger
 import org.slf4j.impl.SimpleLoggerFactory
 import java.io.File
 import java.time.Instant
-import java.util.*
 
-
-@OptIn(ExperimentalCoroutinesApi::class)
 class Bot(val config: Config) {
     val log: Logger = SimpleLoggerFactory().getLogger("aaaaaaa") // Creates a log.
     val startTime: Instant = Instant.now() // Sets the start time of the bot.
@@ -68,7 +63,7 @@ class Bot(val config: Config) {
 
     companion object {
         /** Number of milliseconds between checking for expiring reminders. */
-        private const val REMINDER_RESOLUTION = 1000L
+        private const val REMINDER_RESOLUTION =    1_000L
         private const val GUILD_SCAN_INTERVAL = 3600_000L
     }
 
@@ -95,7 +90,7 @@ class Bot(val config: Config) {
                     delay(REMINDER_RESOLUTION)
 
                     database.trnsctn {
-                        for (reminder in database.expiringRemindersNoTransaction()) {
+                        for (reminder in database.expiringReminders()) {
                             // Make copies of relevant things for thread safety
                             val text = reminder.text + ""
                             val channelId = reminder.channelId
@@ -117,7 +112,7 @@ class Bot(val config: Config) {
             }
 
             // Every so often, double check if it's actually in those guilds
-            // Note: keeping track of this is stupid and should be removed
+            // Note: keeping track of this is stupid and should be removed (delegate to discord, may cause sharding issues?)
             scope.launch {
                 while (true) {
                     val guilds = (jda.shardManager?.guildCache ?: jda.guildCache).map { it.idLong }.toHashSet()
@@ -134,7 +129,7 @@ class Bot(val config: Config) {
 
         @Suppress("ReturnCount")
         jda.listener<MessageReactionAddEvent> { event ->
-            if (event.user?.let { database.banned(it) } == true) return@listener
+            if (event.user?.let { database.bannedT(it) } == true) return@listener
             val roleId = database.moderationDB.autoRole(event.messageIdLong, event.reactionEmote) ?: return@listener
             val role = event.guild.getRoleById(roleId) ?: return@listener
 
@@ -145,47 +140,28 @@ class Bot(val config: Config) {
 
         @Suppress("ReturnCount")
         jda.listener<MessageReactionRemoveEvent> { event ->
-            if (event.user?.let { database.banned(it) } == true) return@listener
+            if (event.user?.let { database.bannedT(it) } == true) return@listener
             val roleId = database.moderationDB.autoRole(event.messageIdLong, event.reactionEmote) ?: return@listener
             val role = event.guild.getRoleById(roleId) ?: return@listener
             event.guild.removeRoleFromMember(event.userId, role).queue()
         }
 
-        jda.listener<GuildJoinEvent> { event ->
-            event.guild.loadMembers {
-                database.addLink(event.guild, it.user)
-            }.onSuccess {}
+        jda.listener<GuildJoinEvent> {
+//            event.guild.loadMembers {
+//                database.addLink(event.guild, it.user)
+//            }.onSuccess {}
             updateActivity()
         }
 
         jda.listener<GuildLeaveEvent> { event ->
-            database.trnsctn { database.guild(event.guild).currentlyIn = false }
+            database.trnsctn { event.guild.m.currentlyIn = false }
         }
-
-        // disabled for the time being
-//        jda.listener<MessageReceivedEvent> { event ->
-//            val reaction = database.trnsctn {
-//                val g = database.guild(event.guild)
-//                val u = database.user(event.author)
-//                ExposedDatabase.Autoreaction.find { (ExposedDatabase.Autoreactions.guild eq g.id) and (ExposedDatabase.Autoreactions.user eq u.id) }
-//                    .map { it.reaction }
-//            }
-//            reaction.forEach { r ->
-//                val isBuiltin = Emotes.isValid(r)
-//                if (isBuiltin) {
-//                    event.message.addReaction(r).await()
-//                } else {
-//                    val found = event.guild.getEmoteById(r.filter { it.isDigit() }) ?: return@listener
-//                    event.message.addReaction(found).await()
-//                }
-//            }
-//        }
     }
 
     init {
         jda.listener<MessageReceivedEvent> { event ->
             if (!event.isFromGuild || event.channelType != ChannelType.TEXT) return@listener
-            if (database.banned(event.author)) return@listener
+            if (database.bannedT(event.author)) return@listener
             if (event.author == jda.selfUser) return@listener
             scope.launch {
                 leveling.addPoints(event.author, Leveling.POINTS_PER_MESSAGE, event.textChannel)
@@ -193,7 +169,7 @@ class Bot(val config: Config) {
         }
 
         jda.listener<ButtonInteractionEvent> { event ->
-            if (database.banned(event.user)) return@listener
+            if (database.bannedT(event.user)) return@listener
             buttonListeners.forEach { it(event) }
         }
 

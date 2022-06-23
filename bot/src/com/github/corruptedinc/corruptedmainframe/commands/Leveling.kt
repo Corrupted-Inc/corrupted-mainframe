@@ -2,14 +2,15 @@ package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.github.corruptedinc.corruptedmainframe.utils.*
 import dev.minn.jda.ktx.await
+import dev.minn.jda.ktx.listener
+import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.Permission
-import net.dv8tion.jda.api.entities.Guild
-import net.dv8tion.jda.api.entities.MessageEmbed
-import net.dv8tion.jda.api.entities.TextChannel
-import net.dv8tion.jda.api.entities.User
+import net.dv8tion.jda.api.entities.*
+import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
@@ -28,6 +29,17 @@ class Leveling(private val bot: Bot) {
         fun fightPoints(level: Double, zeroToOne: Double) = ((10 * (level + 2).pow(0.25) + 10) * zeroToOne) + 5
 
         // TODO: move some other methods here as well
+    }
+
+    init {
+        bot.jda.listener<MessageReceivedEvent> { event ->
+            if (!event.isFromGuild || event.channelType != ChannelType.TEXT) return@listener
+            if (bot.database.bannedT(event.author)) return@listener
+            if (event.author == bot.jda.selfUser) return@listener
+            bot.scope.launch {
+                addPoints(event.author, POINTS_PER_MESSAGE, event.textChannel)
+            }
+        }
     }
 
     fun pointsToLevel(points: Double) = ln((points + 60) / 10).sq() - 3
@@ -50,7 +62,7 @@ class Leveling(private val bot: Bot) {
             bot.database.addPoints(user, channel.guild, points)
             val level = level(user, channel.guild).toInt()
             if (level > previousLevel && bot.database.popups(user, channel.guild)) {
-                if (!bot.database.trnsctn { bot.database.guild(channel.guild).levelsEnabled }) return
+                if (!bot.database.trnsctn { channel.guild.m.levelsEnabled }) return
                 channel.sendMessageEmbeds(
                     embed(
                         "Level Up",
@@ -105,7 +117,7 @@ class Leveling(private val bot: Bot) {
             bot.commands.assertPermissions(event, Permission.ADMINISTRATOR)
             val e = event.getOption("enabled")!!.asBoolean
             bot.database.trnsctn {
-                bot.database.guild(event.guild!!).levelsEnabled = e
+                event.guild!!.m.levelsEnabled = e
             }
             event.replyEmbeds(embed("Successfully ${if (e) "enabled" else "disabled"} level notifications")).await()
         }
@@ -113,6 +125,9 @@ class Leveling(private val bot: Bot) {
         bot.commands.register(slash("levelnotifs", "Toggle level notifications")
             .addOption(OptionType.BOOLEAN, "enabled", "If you should be shown level notifications")) { event ->
             val enabled = event.getOption("enabled")!!.asBoolean
+            bot.database.trnsctn {
+                event.user.m
+            }
             bot.database.setPopups(event.user, event.guild ?:
             throw CommandException("This command must be run in a server!"), enabled)
             event.replyEmbeds(embed("Set level popups to $enabled")).await()
@@ -153,7 +168,7 @@ class Leveling(private val bot: Bot) {
         bot.commands.register(slash("leaderboard", "Shows the server level leaderboard.")) { event ->
             // update rank column
             bot.database.trnsctn {
-                val g = bot.database.guild(event.guild!!)
+                val g = event.guild!!.m
                 // yes, I'm aware this is awful, but because it must be an integer and isn't user provided it's safe
                 // if it was user provided I would have put more effort into a prepared statement
                 exec(rankStatement.replace("?", g.id.value.toString()))
