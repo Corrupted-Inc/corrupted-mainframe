@@ -51,7 +51,7 @@ class InfixNotationParser(precision: Int) {
         for ((index, c) in inp.withIndex()) {
             if (match != null) {
                 if (index !in match.range) {
-                    phaseOneTokens.add(PhaseOneTokens.NumberToken(BigDecimal(numberBuilder.toString(), mc)))
+                    phaseOneTokens.add(PhaseOneTokens.NumberToken(numberBuilder.toString().toBigDecimal()))
                     numberBuilder.clear()
                     match = numbers.find { index in it.range }
                 } else {
@@ -132,6 +132,7 @@ class InfixNotationParser(precision: Int) {
         }
 
         fun parseNoParenthesis(tokens: List<PhaseOneTokens>): BigDecimal {
+            println("parsing $tokens")
             val t = tokens.toMutableList()
 
             fun parseSingleLevel(vararg ops: Operator) {
@@ -149,11 +150,11 @@ class InfixNotationParser(precision: Int) {
                             PhaseOneTokens.NumberToken(
                                 when (token.op) {
                                     Operator.UNARY_MINUS -> throw RuntimeException("this should never happen")
-                                    Operator.PLUS -> a + b
-                                    Operator.MINUS -> a - b
-                                    Operator.TIMES -> a * b
-                                    Operator.DIVIDE -> a / b
-                                    Operator.POW -> a.pow(b)
+                                    Operator.PLUS -> a.add(b, mc)
+                                    Operator.MINUS -> a.subtract(b, mc)
+                                    Operator.TIMES -> a.multiply(b, mc)
+                                    Operator.DIVIDE -> a.divide(b, mc)
+                                    Operator.POW -> BigDecimalMath.pow(a, b, mc)
                                 }
                             )
                         )
@@ -206,15 +207,15 @@ class InfixNotationParser(precision: Int) {
                             "cos" -> BigDecimalMath.cos(num, mc)
                             "tan" -> BigDecimalMath.tan(num, mc)
                             "cot" -> BigDecimalMath.cot(num, mc)
-                            "sec" -> BigDecimal.ONE / BigDecimalMath.cos(num, mc)
-                            "csc" -> BigDecimal.ONE / BigDecimalMath.sin(num, mc)
+                            "sec" -> BigDecimal.ONE.divide(BigDecimalMath.cos(num, mc), mc)
+                            "csc" -> BigDecimal.ONE.divide(BigDecimalMath.sin(num, mc), mc)
 
                             "asin" -> BigDecimalMath.asin(num, mc)
                             "acos" -> BigDecimalMath.acos(num, mc)
                             "atan" -> BigDecimalMath.atan(num, mc)
                             "acot" -> BigDecimalMath.acot(num, mc)
-                            "asec" -> BigDecimalMath.acos(BigDecimal.ONE / num, mc)
-                            "acsc" -> BigDecimalMath.asin(BigDecimal.ONE / num, mc)
+                            "asec" -> BigDecimalMath.acos(BigDecimal.ONE.divide(num, mc), mc)
+                            "acsc" -> BigDecimalMath.asin(BigDecimal.ONE.divide(num, mc), mc)
 
                             "sqrt" -> BigDecimalMath.sqrt(num, mc)
                             "exp" -> BigDecimalMath.exp(num, mc)

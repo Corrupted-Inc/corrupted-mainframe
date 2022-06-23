@@ -10,6 +10,10 @@ import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 
 class Starboard(private val bot: Bot) {
+    companion object {
+        private val url = "^(https?)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%=~_|]".toRegex()
+        private val mediaExtensions = setOf("png", "jpg", "jpeg", "gif", "webm", "mp4")
+    }
     init {
         bot.jda.listener<MessageReactionAddEvent> { event ->
             var emote: String? = null
@@ -61,10 +65,11 @@ class Starboard(private val bot: Bot) {
         bot.leveling.addPoints(message.author,
             bot.leveling.starboardPoints(bot.leveling.level(message.author, message.guild)), message.textChannel)
 
+        val attachments = message.attachments.filter { it.isImage || it.isVideo }.map { it.url } + url.findAll(message.contentRaw).filter { it.value.substringAfterLast('.') in mediaExtensions }.map { it.value }
         val embed = Commands.embed("Starboard", message.jumpUrl,
             description = "${message.member?.asMention}:\n" + message.contentRaw.ifBlank { null }?.stripPings(),
             color = message.member?.color, thumbnail = message.member?.effectiveAvatarUrl,
-            imgUrl = message.attachments.firstOrNull { it.isImage || it.isVideo }?.url,
+            imgUrl = attachments.randomOrNull(),
             timestamp = message.timeCreated,
             stripPings = false
         )

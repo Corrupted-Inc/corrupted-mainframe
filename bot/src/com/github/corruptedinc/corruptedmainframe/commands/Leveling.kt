@@ -1,17 +1,22 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
-import com.github.corruptedinc.corruptedmainframe.utils.ephemeral
-import com.github.corruptedinc.corruptedmainframe.utils.sq
+import com.github.corruptedinc.corruptedmainframe.utils.*
 import dev.minn.jda.ktx.await
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.Guild
+import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.TextChannel
 import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
+import net.dv8tion.jda.api.interactions.commands.build.Commands.user
+import org.intellij.lang.annotations.Language
+import org.jetbrains.exposed.sql.and
+import java.time.Instant
 import kotlin.math.*
 
 @Suppress("MagicNumber")
@@ -113,7 +118,7 @@ class Leveling(private val bot: Bot) {
             event.replyEmbeds(embed("Set level popups to $enabled")).await()
         }
 
-        bot.commands.registerUser(Commands.user("level")) { event ->
+        bot.commands.registerUser(user("level")) { event ->
             val user = event.targetMember!!.user
             val xp = bot.leveling.points(user, event.guild!!)
             val level = bot.leveling.pointsToLevel(xp)
@@ -138,6 +143,49 @@ class Leveling(private val bot: Bot) {
                     "`|$out|`",
                 thumbnail = user.effectiveAvatarUrl,
                 stripPings = false)).ephemeral().await()
+        }
+
+        @Language("sql") val rankStatement =
+            "UPDATE points SET rank = RankTable.rank " +
+                    "FROM (SELECT id, DENSE_RANK() OVER(ORDER BY points DESC, id) AS rank FROM points WHERE guild = ?) " +
+                    "AS RankTable WHERE RankTable.id = points.id"
+
+        bot.commands.register(slash("leaderboard", "Shows the server level leaderboard.")) { event ->
+            // update rank column
+            bot.database.trnsctn {
+                val g = bot.database.guild(event.guild!!)
+                // yes, I'm aware this is awful, but because it must be an integer and isn't user provided it's safe
+                // if it was user provided I would have put more effort into a prepared statement
+                exec(rankStatement.replace("?", g.id.value.toString()))
+            }
+
+            val guildid = event.guild!!.idLong
+
+            fun area(start: Long, end: Long): MessageEmbed {
+                val idsRanksPoints = bot.database.trnsctn {
+                    val g = bot.database.guild(guildid).id
+                    // TODO: add secondary sort column somehow
+                    val items = ExposedDatabase.Point.find { (ExposedDatabase.Points.guild eq g) and (ExposedDatabase.Points.rank greaterEq start) and (ExposedDatabase.Points.rank less end) }.limit(30)
+                        .sortedByDescending { it.points }
+
+                    items.map { Triple(it.user.discordId, it.rank, it.points.roundToLong()) }
+                }
+
+                val g = bot.jda.getGuildById(guildid)!!
+
+                val rankCol = Col(Align.RIGHT, *(arrayOf("Rank") + idsRanksPoints.map { it.second.toString() }))
+                val nameCol = Col(Align.LEFT, *(arrayOf("Name") + idsRanksPoints.map { g.getMemberById(it.first)?.effectiveName ?: "bug" }))
+                val pntsCol = Col(Align.LEFT, *(arrayOf("Points") + idsRanksPoints.map { it.third.toString() }))
+
+                return embed("Leaderboard $start - $end", description = "```" + table(rankCol, nameCol, pntsCol) + "```")
+            }
+
+            val perMessage = 15
+            val size = event.guild!!.memberCount / perMessage  // todo: dejankify
+
+            event.replyLambdaPaginator(size.toLong()) { v ->
+                area(v * perMessage, (v + 1) * perMessage)
+            }
         }
     }
 }

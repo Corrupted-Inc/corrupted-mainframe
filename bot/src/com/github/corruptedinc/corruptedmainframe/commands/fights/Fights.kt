@@ -1,5 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.commands.fights
 
+import com.github.corruptedinc.corruptedmainframe.commands.CommandException
 import com.github.corruptedinc.corruptedmainframe.commands.Commands
 import com.github.corruptedinc.corruptedmainframe.commands.Leveling
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
@@ -9,7 +10,10 @@ import kotlinx.coroutines.delay
 import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.interactions.commands.CommandInteraction
+import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.SlashCommandInteraction
+import org.jetbrains.exposed.sql.and
+import java.time.Instant
 import kotlin.math.*
 import kotlin.random.Random.Default.nextDouble
 
@@ -138,5 +142,34 @@ class Fights(private val bot: Bot) {
 
         bot.leveling.addPoints(bot.jda.getUserById(attackerID)!!, attackerXPGain, bot.jda.getTextChannelById(channelID)!!)
         bot.leveling.addPoints(bot.jda.getUserById(victimID)!!, victimXPGain, bot.jda.getTextChannelById(channelID)!!)
+    }
+
+    fun registerCommands() {
+        bot.commands.register(
+            net.dv8tion.jda.api.interactions.commands.build.Commands.slash("fight", "Fight another user")
+            .addOption(OptionType.USER, "user", "The user to fight", true)) { event ->
+            val user = event.getOption("user")!!.asMember ?: throw CommandException("You can't fight someone in a different server!")
+            val attacker = event.member!!
+
+            if (user == attacker) throw CommandException("You can't fight yourself!")
+
+            val guild = event.guild!!
+//            if (bot.leveling.level(attacker.user, guild) > bot.leveling.level(user.user, guild) + 5.0 && user.idLong != bot.jda.selfUser.idLong)
+//                throw CommandException("Can't fight someone more than 5 levels lower than you!")
+
+            bot.database.trnsctn {
+                val u = bot.database.user(attacker.user)
+                val g = bot.database.guild(guild)
+                val pts = ExposedDatabase.Point.find { (ExposedDatabase.Points.user eq u.id) and (ExposedDatabase.Points.guild eq g.id) }.first()
+                val cooldown = pts.fightCooldown.plus(g.fightCooldown)
+                val now = Instant.now()
+                if (cooldown.isAfter(now)) {
+                    throw CommandException("Can't fight again until <t:${cooldown.epochSecond}>!")
+                }
+
+                pts.fightCooldown = now
+            }
+            bot.fights.sendFight(event, attacker.user, user.user, guild)
+        }
     }
 }
