@@ -15,7 +15,7 @@ jobs:
       - name: Build
         run: |
           echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
-          ./gradlew bot:check
+#          ./gradlew bot:check
           ./gradlew bot:jar
       - name: Release
         uses: softprops/action-gh-release@v1

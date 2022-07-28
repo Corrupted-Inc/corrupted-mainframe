@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    com.github.blahblahbloopster.service: db
+  name: postgres-storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  volumeName: postgres-storage
+  resources:
+    requests:
+      storage: 4G

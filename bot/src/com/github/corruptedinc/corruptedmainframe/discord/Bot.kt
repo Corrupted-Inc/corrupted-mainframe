@@ -37,34 +37,46 @@ import java.io.File
 import java.time.Instant
 
 class Bot(val config: Config) {
-    val log: Logger = SimpleLoggerFactory().getLogger("aaaaaaa") // Creates a log.
-    val startTime: Instant = Instant.now() // Sets the start time of the bot.
+    val log: Logger = SimpleLoggerFactory().getLogger("aaaaaaa") // Creates a logger for recording errors and other debug information
+    val startTime: Instant = Instant.now() // Sets the start time of the bot
+    private val plugins = PluginLoader(File("plugins"), this)
     val jda = JDABuilder.create(config.token,
+        // Specify the intents we need
+        // Note the absence of the PRESENCE intent; this vastly reduces traffic to the bot
         GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS,
         GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES, GatewayIntent.GUILD_EMOJIS)
-        .disableCache(CacheFlag.ACTIVITY, CacheFlag.CLIENT_STATUS, CacheFlag.ONLINE_STATUS)
+        .disableCache(CacheFlag.ACTIVITY, CacheFlag.CLIENT_STATUS, CacheFlag.ONLINE_STATUS)  // disable unneeded cache flags to improve performance
+        // Add JDA KTX to the mix, which allows for some coroutine-related niceties
         .injectKTX()
-        .build() // The actual API for discord.
+        // allow plugins to make changes to the JDA as needed
+        .apply { plugins.applyToJDA(this) }
+        .build()
+    // The primary coroutine scope for the bot
     val scope = CoroutineScope(Dispatchers.Default)
     // Creates a database instance from the URL and driver specified in the config file.  The jar includes the postgresql driver
-    val database = ExposedDatabase(Database.connect(config.databaseUrl, driver = config.databaseDriver,
-        databaseConfig = DatabaseConfig { useNestedTransactions = true }
-    ), this)
+    val database = ExposedDatabase(
+        Database.connect(
+            "jdbc:postgresql://${System.getenv("POSTGRES_SERVICE_HOST")}:5432/postgres?user=postgres&password=${System.getenv("POSTGRES_PASSWORD")}",
+            driver = "org.postgresql.Driver",
+            databaseConfig = DatabaseConfig { useNestedTransactions = true }  // TODO: make individual functions not start their own transactions
+        ), this)
+    val buttonListeners = mutableListOf<(ButtonInteractionEvent) -> Unit>()
+    // load components
     val audio = Audio(this)
     val leveling = Leveling(this)
-    val buttonListeners = mutableListOf<(ButtonInteractionEvent) -> Unit>()
     val starboard = Starboard(this)
     val commands = Commands(this)
+    val fights = Fights(this)
+    // Robotics
     val theBlueAlliance = TheBlueAlliance(config.blueAllianceToken, scope)
-    private val plugins = PluginLoader(File("plugins"), this)
     val pathDrawer = PathDrawer(this)
     val paths = RobotPaths(this)
-    val fights = Fights(this)
 
     companion object {
         /** Number of milliseconds between checking for expiring reminders. */
         private const val REMINDER_RESOLUTION =    1_000L
         private const val GUILD_SCAN_INTERVAL = 3600_000L
+        const val BUILD = 1L
     }
 
     private fun updateActivity() {
@@ -73,6 +85,8 @@ class Bot(val config: Config) {
 
     init {
         Runtime.getRuntime().addShutdownHook(Thread {
+            // on shutdown, save currently playing audio to the database
+            // TODO: add timeout so that it doesn't resume if the bot was offline for more than a few minutes
             log.info("Saving audio state to database...")
             audio.gracefulShutdown()
             log.info("Finished, exiting")
@@ -85,6 +99,7 @@ class Bot(val config: Config) {
 
             updateActivity()
 
+            // TODO: figure out a better way to do this than just doing a query every second
             scope.launch {
                 while (true) {
                     delay(REMINDER_RESOLUTION)

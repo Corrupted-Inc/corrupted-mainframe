@@ -2,11 +2,11 @@
 .gradle/
 build/
 gradle.properties
-database.db
 logs/
-test.db
-transaction.log
 config.json
 bot/build/
 corrupted-mainframe.jar
 plugins
+image/corrupted-mainframe.jar
+image/plugins/*
+image/config.json

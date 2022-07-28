@@ -19,8 +19,6 @@ This configuration file will follow this format:
 {
   "token": "bot token here",
   "permaAdmins": ["your user ID here", "optional other user id here"],
-  "databaseUrl": "jdbc:postgresql://db:5432/postgres?user=postgres&password=PASSWORD GOES HERE",
-  "databaseDriver": "org.postgresql.Driver",
   "gitUrl": "https://github.com/Corrupted-Inc/corrupted-mainframe/"
 }
 ```
@@ -31,4 +29,39 @@ This configuration file will follow this format:
 
 ## Contributing
 Pull requests are welcome!  If you find a security vulnerability, please contact an admin
-directly.  They can be found in [our discord](https://discord.gg/WF8HU47PDc).
+directly.  We can be found in [our discord](https://discord.gg/WF8HU47PDc).
+
+## TODOs
+ * New features
+   * Update readme
+   * Add botBuild to all DB tables
+   * New calculator backend (ideally one that supports CAS or at least numeric equation solving)
+   * Add common parent table for snowflakes?
+   * General-purpose migrations system
+   * Generalized commands/autocomplete interface
+     * Define object, enumerate with reflection
+     * Annotate parameters with name and description
+       * Compile-time type checking?
+     * Define subcommands as methods
+   * Example plugin repository
+   * Per-guild custom fight attacks
+   * Change `table()` to generate SVGs and render them for actually good formatting
+   * Moderation command log
+   * Manager
+     * Shard statistics
+     * Restart shards
+     * Deploy update
+     * Profiling
+     * Integrated with kubernetes
+     * Centralized logging
+     * Automated DB snapshots
+   * General-purpose settings system
+ * Bugfixes
+    * Somehow catch `ClassNotFoundException`s due to modified JAR and restart the bot, or force load all classes at boot
+ * Finish
+   * Quotes
+   * Repost detector
+   * Fight records
+ * Cleanup and refactoring
+   * Remove unneeded tables and columns
+   * Split up commands into yet more files

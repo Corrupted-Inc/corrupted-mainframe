@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+#  labels:
+#    com.github.blahblahbloopster.service: bot
+  name: bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      com.github.blahblahbloopster.service: bot
+  template:
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: shard
+          image: corrupted-inc/corrupted-mainframe
+          imagePullPolicy: Never  # it's a local image
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-password
+                  key: password
+                  optional: false
+    metadata:
+      labels:
+        com.github.blahblahbloopster.service: bot

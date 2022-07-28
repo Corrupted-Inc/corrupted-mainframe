@@ -1,5 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
+import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.commands.fights.Attack
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
@@ -16,6 +17,7 @@ import kotlinx.coroutines.delay
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.MessageEmbed
+import net.dv8tion.jda.api.entities.MessageEmbed.Field
 import net.dv8tion.jda.api.entities.TextChannel
 import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.SelectMenuInteractionEvent
@@ -78,12 +80,12 @@ fun registerCommands(bot: Bot) {
             if (messages.size != min(maxDeletion, yetToDelete)) break
             yetToDelete -= messages.size
             @Suppress("MagicNumber")
-            (delay(1100))  // To prevent ratelimit being exceeded
+            delay(1100)  // To prevent ratelimit being exceeded
         }
     }
 
     bot.commands.register(slash("stats", "Shows bot statistics")) { event ->
-        // TODO daily commands executed, new servers, etc
+        // TODO new servers, performance info
 
         val builder = EmbedBuilder()
         builder.setTitle("Statistics and Info")
@@ -98,7 +100,7 @@ fun registerCommands(bot: Bot) {
                 Commands: ${bot.commands.newCommands.size}
                 Gateway ping: ${bot.jda.gatewayPing}ms
                 Rest ping: ${ping}ms
-                Uptime: ${Duration.between(bot.startTime, Instant.now()).toHumanReadable()}
+                Uptime: ${Duration.between(bot.startTime, Instant.now()).toHumanReadable() /* TODO: remove unnecessary precision */ }
                 Git: ${bot.config.gitUrl}
                 Invite: [Admin invite](${Commands.adminInvite(id)})  [basic permissions](${Commands.basicInvite(id)})
                 Commands Run Today: ${bot.database.commandsRun(Instant.now().minus(24, ChronoUnit.HOURS), Instant.now())}
@@ -122,7 +124,7 @@ fun registerCommands(bot: Bot) {
             ?: throw CommandException("Failed to find user")
 
         event.guild?.ban(user, 0)?.await() ?: throw CommandException("Must be run in a server!")
-        event.replyEmbeds(Commands.embed("Banned", description = "Banned ${user.asMention}")).ephemeral().await()
+        event.replyEmbeds(embed("Banned", description = "Banned ${user.asMention}")).ephemeral().await()
     }
 
     bot.commands.register(
@@ -132,7 +134,7 @@ fun registerCommands(bot: Bot) {
         val user = event.getOption("user")?.asUser ?: throw CommandException("Failed to find user!")
 
         event.guild?.unban(user)?.await() ?: throw CommandException("Couldn't unban user!")
-        event.replyEmbeds(Commands.embed("Unbanned", description = "Unbanned ${user.asMention}")).ephemeral().await()
+        event.replyEmbeds(embed("Unbanned", description = "Unbanned ${user.asMention}")).ephemeral().await()
     }
 
     bot.commands.register(
@@ -143,7 +145,7 @@ fun registerCommands(bot: Bot) {
             ?: throw CommandException("Failed to find user")
 
         event.guild!!.kick(user.id).await()// ?: throw CommandException("Must be run in a server!")
-        event.replyEmbeds(Commands.embed("Kicked", description = "Kicked ${user.asMention}", stripPings = false)).ephemeral().await()
+        event.replyEmbeds(embed("Kicked", description = "Kicked ${user.asMention}", stripPings = false)).ephemeral().await()
     }
 
     bot.commands.register(slash("reactionrole", "Manage reaction role messages")
@@ -157,10 +159,10 @@ fun registerCommands(bot: Bot) {
             SubcommandData("removeoption", "Removes a specific role from being awarded by a reaction role message")
                 .addOption(OptionType.STRING, "url", "Message URL", true)
                 .addOption(OptionType.ROLE, "role", "Role name", true),
-            SubcommandData("addoption", "Adds an option to an existing reaction role message")
-                .addOption(OptionType.STRING, "url", "Message URL", true)
-                .addOption(OptionType.STRING, "emote", "The emote to add", true)
-                .addOption(OptionType.ROLE, "role", "The role to add", true)
+//            SubcommandData("addoption", "Adds an option to an existing reaction role message")
+//                .addOption(OptionType.STRING, "url", "Message URL", true)
+//                .addOption(OptionType.STRING, "emote", "The emote to add", true)
+//                .addOption(OptionType.ROLE, "role", "The role to add", true)
         )
     ) { event ->
         when (event.subcommandName) {
@@ -240,7 +242,7 @@ fun registerCommands(bot: Bot) {
                     )
                 }
 
-                event.replyEmbeds(Commands.embed("Reaction Roles", content = fields)).ephemeral().await()
+                event.replyEmbeds(embed("Reaction Roles", content = fields)).ephemeral().await()
             }
             "delete" -> {
                 bot.commands.assertAdmin(event)
@@ -254,7 +256,7 @@ fun registerCommands(bot: Bot) {
                     item.delete()
                 }
 
-                event.replyEmbeds(Commands.embed("Successfully removed")).ephemeral().await()
+                event.replyEmbeds(embed("Successfully removed")).ephemeral().await()
             }
             "removeoption" -> {
                 bot.commands.assertAdmin(event)
@@ -270,7 +272,7 @@ fun registerCommands(bot: Bot) {
                     AutoRoles.deleteWhere { (AutoRoles.message eq item.id) and (AutoRoles.role eq role) }
                 }
 
-                event.replyEmbeds(Commands.embed("Removed $c role${if (c == 1) "" else "s"}")).ephemeral().await()
+                event.replyEmbeds(embed("Removed $c role${if (c == 1) "" else "s"}")).ephemeral().await()
             }
             "addoption" -> {
                 TODO("AAAA")
@@ -302,156 +304,111 @@ fun registerCommands(bot: Bot) {
         }
     }
 
-//    bot.commands.register(slash("reactionrole", "Reactions are specified with the format " +
-//            "'\uD83D\uDC4D-rolename, \uD83D\uDCA5-otherrolename'.")
-//        .addOption(OptionType.STRING, "message", "Message link", true)
-//        .addOption(OptionType.STRING, "reactions", "Reactions", true)) { event ->
-//
-//        bot.commands.assertAdmin(event)
-//
-//        event.deferReply().await()
-//
-//        val reactionsMap = event.getOption("reactions")!!.asString.removeSurrounding("\"").replace(", ", ",").split(",")
-//            // Split by colon into emote and role name, stripping spaces from the start of the latter
-//            .map { Pair(
-//                it.substringBeforeLast("-"),
-//                it.substringAfterLast("-").dropWhile { c -> c == ' ' })
-//            }
-//
-//            // Retrieve all the roles
-//            .map {
-//                event.guild?.getRolesByName(it.second, true)
-//                    ?.firstOrNull()?.run { Pair(it.first, this) } ?: throw CommandException("Couldn't find role '${it.second}'!")
-//            }
-//            .filter { event.member?.canInteract(it.second) == true }  // Prevent privilege escalation
-//            .associate { Pair(it.first, it.second.idLong) }  // Convert to map for use by the database
-//
-//        val link = event.getOption("message")!!.asString
-//        val messageId = link.substringAfterLast("/")
-//        val channelId = link.removeSuffix("/$messageId").substringAfterLast("/").toLongOrNull()
-//            ?: throw CommandException("Invalid message link")
-//        val channel = event.guild?.getTextChannelById(channelId)
-//        val msg = channel?.retrieveMessageById(
-//            messageId.toLongOrNull()
-//                ?: throw CommandException("Invalid message link")
-//        )?.await() ?: throw CommandException("Invalid message link")
-//
-//        bot.database.moderationDB.addAutoRole(msg, reactionsMap)
-//
-//        for (reaction in reactionsMap) {
-//            if (reaction.key.startsWith(":")) {
-//                // sketchy
-//                msg.addReaction(event.guild!!.getEmotesByName(reaction.key.removeSurrounding(":"), false).first()).await()
-//            } else {
-//                msg.addReaction(reaction.key).await()
-//            }
-//        }
-//
-//        event.hook.editOriginalEmbeds(
-//            Commands.embed("Successfully added ${reactionsMap.size} reaction roles:",
-//                content = reactionsMap.map {
-//                    MessageEmbed.Field(it.key, event.guild?.getRoleById(it.value)?.name, false)
-//                })
-//        ).await()
-//    }
-
-    bot.commands.register(slash("starboard", "Manage the starboard").addSubcommands(
-        SubcommandData("setup", "Set up or modify the starboard")
-            .addOption(OptionType.CHANNEL, "channel", "The starboard channel", true)
-            .addOption(OptionType.STRING, "emote", "The starboard emote", true)
-            .addOption(OptionType.INTEGER, "threshold", "The starboard threshold (default 7)", false),
-        SubcommandData("disable", "Disable the starboard"),
-        SubcommandData("remove", "Remove a message from the starboard")
-            .addOption(OptionType.STRING, "link", "A link to the offending message", true),
-        SubcommandData("star", "Add a message to the starboard")
-            .addOption(OptionType.STRING, "link", "A link to the message to be added", true),
-        SubcommandData("threshold", "Set the threshold for the starboard")
-            .addOption(OptionType.INTEGER, "threshold", "The number of reactions", true)
-    )) { event ->
-        bot.commands.assertPermissions(event, Permission.MESSAGE_MANAGE)
-
+    // TODO: autocomplete names
+    bot.commands.register(slash("starboards", "Manage starboards")
+        .addSubcommands(
+            SubcommandData("list", "List starboards"),
+            SubcommandData("add", "Add a starboard")
+                .addOption(OptionType.STRING, "name", "The starboard title", true)
+                .addOption(OptionType.CHANNEL, "channel", "The starboard channel", true)
+                .addOption(OptionType.STRING, "emote", "The starboard emote", true)
+                .addOption(OptionType.INTEGER, "threshold", "The number of reactions to star a message", true)
+                .addOption(OptionType.NUMBER, "multiplier", "The XP gain multiplier", true),
+            SubcommandData("remove", "Remove a starboard")
+                .addOption(OptionType.STRING, "name", "The name of the starboard to be removed", true),
+            SubcommandData("modify", "Modify a starboard")
+                .addOption(OptionType.STRING, "name", "The starboard to be modified", true)
+                .addOption(OptionType.STRING, "new-name", "new name (optional)", false)
+                .addOption(OptionType.CHANNEL, "channel", "The new starboard channel (optional)", false)
+                .addOption(OptionType.STRING, "emote", "The new starboard emote (optional)", false)
+                .addOption(OptionType.INTEGER, "threshold", "The new number of reactions to star a message (optional)", false)
+                .addOption(OptionType.NUMBER, "multiplier", "The new XP gain multiplier (optional)", false)
+            )
+    ) { event ->
+        if (!event.isFromGuild) return@register
         when (event.subcommandName) {
-            "setup" -> {
-                val channel = event.getOption("channel")!!.asMessageChannel as? TextChannel
-                    ?: throw CommandException("Must be a message channel!")
-                val reactionName = event.getOption("emote")!!.asString
-                val reaction = event.guild!!.getEmoteById(
-                    reactionName.substringAfterLast(':').removeSuffix(">")
-                ) ?: throw CommandException("Couldn't find a custom emoji with that name!")
-                val threshold = event.getOption("threshold")?.asLong?.coerceIn(0, Int.MAX_VALUE.toLong())?.toInt()
-                    ?: ExposedDatabase.STARBOARD_THRESHOLD_DEFAULT
-                bot.database.trnsctn {
-                    val g = (event.guild ?: return@trnsctn).m
-                    g.starboardChannel = channel.idLong
-                    g.starboardReaction = reaction.name
-                    g.starboardThreshold = threshold
-                }
-                event.replyEmbeds(
-                    Commands.embed(
-                        "Starboard",
-                        description = "Starboard successfully set up in ${channel.asMention}."
-                    )
-                ).ephemeral().await()
-            }
-            "disable" -> {
-                bot.database.trnsctn {
+            "list" -> {
+                val starboards = bot.database.trnsctn {
                     val g = event.guild!!.m
-                    g.starboardChannel = null
+                    g.starboards.map { Field(it.name, "<#${it.channel}> ${it.threshold}x ${it.emote}${if (it.xpMultiplier != 1.0) "(${it.xpMultiplier}x XP gain)" else ""}", false) }
                 }
-                event.replyEmbeds(Commands.embed("Starboard", description = "Starboard disabled.")).ephemeral().await()
+                event.replyEmbeds(embed("Starboards", content = starboards)).ephemeral().await()
             }
             "remove" -> {
-                val msgID = event.getOption("link")!!.asString.substringAfterLast('/')
-                val chanID = bot.database.trnsctn {
-                    val g = event.guild!!.m
-                    g.starboardChannel
-                }
-                val channel = event.guild?.getTextChannelById(chanID
-                    ?: throw CommandException("No starboard set up!"))
-                    ?: throw CommandException("No starboard set up!")  // this is fine
-
-                bot.starboard.unstarDB(channel.retrieveMessageById(msgID).await())
-                channel.deleteMessageById(msgID).await()
-                event.replyEmbeds(Commands.embed("Starboard", description = "Removed message.")).ephemeral().await()
-            }
-            "star" -> {
-                val msgLink = event.getOption("link")!!.asString
-                val msgID = msgLink.substringAfterLast('/')
-                val msgChannel = msgLink.removeSuffix("/$msgID").substringAfterLast('/')
-
-                val chan = event.guild!!.getTextChannelById(msgChannel)
-                    ?: throw CommandException("Message not found!")
-                val msg = chan.retrieveMessageById(msgID).await()
-                    ?: throw CommandException("Message not found!")
-
-                bot.starboard.star(msg)
-
-                event.replyEmbeds(Commands.embed("Starboard", description = "Starred message.")).ephemeral().await()
-            }
-            "threshold" -> {
+                bot.commands.assertAdmin(event)
+                val name = event.getOption("name")!!.asString.trim()
                 bot.database.trnsctn {
                     val g = event.guild!!.m
-                    g.starboardThreshold = event.getOption("threshold")!!.asLong
-                        .coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+                    val found = ExposedDatabase.Starboard.find { (ExposedDatabase.Starboards.name eq name) and (ExposedDatabase.Starboards.guild eq g.id) }.firstOrNull()
+                    found ?: throw CommandException("Starboard '$name' not found!")
+                    found.delete()
                 }
-                event.replyEmbeds(Commands.embed("Starboard", description = "Successfully updated threshold.")).ephemeral().await()
+                event.replyEmbeds(embed("Starboard Deleted")).await()
+            }
+            "add" -> {
+                bot.commands.assertAdmin(event)
+                val name = event.getOption("name")!!.asString.trim()
+                val channel = event.getOption("channel")!!.asTextChannel ?: throw CommandException("Must be a text channel!")
+                val emoteName = event.getOption("emote")!!.asString.trim()
+                val threshold = event.getOption("threshold")!!.asInt
+                val multiplier = event.getOption("multiplier")!!.asDouble
+
+                val emote = event.guild!!.getEmoteById(emoteName.substringAfterLast(':').removeSuffix(">"))?.asMention
+                    ?: if (Emotes.isValid(emoteName)) emoteName else null
+                emote ?: throw CommandException("Emoji not found!")
+                if (threshold !in 1..1_000_000) throw CommandException("Invalid threshold!")
+                if (multiplier !in 0.0..1000.0) throw CommandException("Invalid multiplier!")
+                bot.database.trnsctn {
+                    val g = event.guild!!.m
+                    if (g.starboards.any { it.name == name }) throw CommandException("A starboard called '$name' already exists!")
+                    if (g.starboards.count() > 20) throw CommandException("A guild can only have 20 starboards!")
+                    if (g.starboards.any { it.emote == emote && it.channel == channel.idLong }) throw CommandException("Can't have two starboards with the same emote in the same channel!")
+                    ExposedDatabase.Starboard.new {
+                        this.guild = g
+                        this.threshold = threshold
+                        this.emote = emote
+                        this.channel = channel.idLong
+                        this.name = name
+                        this.xpMultiplier = multiplier
+                    }
+                }
+                event.replyEmbeds(embed("Starboard Created")).await()
+            }
+            "modify" -> {
+                bot.commands.assertAdmin(event)
+                bot.database.trnsctn {
+                    val oldName = event.getOption("name")!!.asString.trim()
+
+                    val g = event.guild!!.m
+                    val existing = ExposedDatabase.Starboard.find { (ExposedDatabase.Starboards.name eq oldName) and (ExposedDatabase.Starboards.guild eq g.id) }.firstOrNull() ?: throw CommandException("Starboard '$oldName' not found!")
+
+                    val name = event.getOption("new-name")?.asString?.trim() ?: oldName
+                    val channel = event.getOption("channel")?.asTextChannel?.idLong ?: existing.channel
+                    val emoteName = event.getOption("emote")?.asString?.trim() ?: existing.emote
+                    val threshold = event.getOption("threshold")?.asInt ?: existing.threshold
+                    val multiplier = event.getOption("multiplier")?.asDouble ?: existing.xpMultiplier
+
+                    val emote = event.guild!!.getEmoteById(emoteName.substringAfterLast(':').removeSuffix(">"))?.asMention
+                        ?: if (Emotes.isValid(emoteName)) emoteName else null
+                    emote ?: throw CommandException("Emote not found!")
+                    if (threshold !in 1..1_000_000) throw CommandException("Invalid threshold!")
+                    if (multiplier !in 0.0..1000.0) throw CommandException("Invalid multiplier!")
+
+                    if (g.starboards.any { it.name == name } && name != oldName) throw CommandException("A starboard called '$name' already exists!")
+                    if (g.starboards.any { it.emote == emote && it.channel == channel } && emoteName != existing.emote) throw CommandException("Can't have two starboards with the same emote in the same channel!")
+                    existing.guild = g
+                    existing.threshold = threshold
+                    existing.emote = emote
+                    existing.channel = channel
+                    existing.name = name
+                    existing.xpMultiplier = multiplier
+                }
+                event.replyEmbeds(embed("Starboard Modified")).await()
             }
         }
     }
 
-    bot.commands.register(slash("addrole", "Creates a role")
-        .addOption(OptionType.STRING, "name", "Role name", true)
-    ) { event ->
-        bot.commands.assertAdmin(event)
-
-        val role = try {
-            event.guild!!.createRole().setName(event.getOption("name")!!.asString).await()
-        } catch (ignored: PermissionException) {
-            throw CommandException("Not enough permissions!")
-        }.idLong
-
-        event.replyEmbeds(Commands.embed("Role Created", description = "id: $role")).ephemeral().await()
-    }
+    // TODO: add back star and unstar in the form of message commands
 
     bot.commands.register(slash("say", "Says something in a channel.")
         .addOption(OptionType.STRING, "title", "The title", true)
@@ -464,8 +421,8 @@ fun registerCommands(bot: Bot) {
 
         bot.commands.assertAdmin(event)
 
-        channel!!.sendMessageEmbeds(Commands.embed(title, description = content, footer = "Requested by <@${event.user.id}>", stripPings = false)).await()
-        event.replyEmbeds(Commands.embed("Sent")).ephemeral().await()
+        channel!!.sendMessageEmbeds(embed(title, description = content, footer = "Requested by <@${event.user.id}>", stripPings = false)).await()
+        event.replyEmbeds(embed("Sent")).ephemeral().await()
     }
 
     bot.commands.register(slash("fightcooldown", "Sets the timeout between fights.")
@@ -489,7 +446,7 @@ fun registerCommands(bot: Bot) {
             val guild = event.guild!!.m
             guild.fightCooldown = Duration.ofMillis((secs * 1000).roundToLong())
         }
-        event.replyEmbeds(Commands.embed("Cooldown Set")).ephemeral().await()
+        event.replyEmbeds(embed("Cooldown Set")).ephemeral().await()
     }
 
     bot.commands.register(slash("fightcategories", "Pick the categories fight attacks are picked from.")
@@ -505,7 +462,7 @@ fun registerCommands(bot: Bot) {
             g.fightCategories = bitmask
         }
 
-        event.replyEmbeds(Commands.embed("Categories Changed", description = categories.joinToString { it.name.lowercase() })).ephemeral().await()
+        event.replyEmbeds(embed("Categories Changed", description = categories.joinToString { it.name.lowercase() })).ephemeral().await()
     }
 
     bot.jda.listener<CommandAutoCompleteInteractionEvent> { event ->
@@ -515,17 +472,5 @@ fun registerCommands(bot: Bot) {
         val sorted = Attack.Category.values().filter { it.pickable }.sortedBy { biasedLevenshteinInsensitive(it.name, value) }
         val existing = if (items.isEmpty()) "" else items.dropLast(1).joinToString() + ", "
         event.replyChoiceStrings(sorted.map { existing + it }).await()
-    }
-
-
-    // TODO: this is broken
-    bot.commands.registerMessage(message("star")) { event ->
-        bot.commands.assertPermissions(event, Permission.MESSAGE_MANAGE)
-
-        val msg = event.target
-
-        bot.starboard.star(msg)
-
-        event.replyEmbeds(Commands.embed("Starboard", description = "Starred message.")).ephemeral().await()
     }
 }

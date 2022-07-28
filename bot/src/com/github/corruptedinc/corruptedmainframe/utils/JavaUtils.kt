@@ -98,4 +98,6 @@ data class RGB(val r: UByte, val g: UByte, val b: UByte, val a: UByte = 255U)
 
 inline fun <T> T.runIf(condition: Boolean, block: T.() -> T) = if (condition) block() else this
 
+inline fun <T> T.runIf(condition: (T) -> Boolean, block: T.() -> T) = if (condition(this)) block() else this
+
 fun ReplyCallbackAction.ephemeral() = setEphemeral(true)

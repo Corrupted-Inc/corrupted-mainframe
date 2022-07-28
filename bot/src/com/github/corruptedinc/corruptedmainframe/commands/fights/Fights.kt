@@ -12,13 +12,15 @@ import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.interactions.commands.CommandInteraction
 import net.dv8tion.jda.api.interactions.commands.OptionType
-import net.dv8tion.jda.api.interactions.commands.SlashCommandInteraction
 import org.jetbrains.exposed.sql.and
+import java.security.SecureRandom
 import java.time.Instant
 import kotlin.math.*
+import kotlin.random.Random
 import kotlin.random.Random.Default.nextDouble
 
 class Fights(private val bot: Bot) {
+    private val r = SecureRandom()
     sealed interface FightEvent {
         val initiatorHP: Double
         val victimHP: Double
@@ -30,24 +32,27 @@ class Fights(private val bot: Bot) {
 
     data class User(val discordID: Long, val level: Int, val isBot: Boolean, var hp: Double)
 
-    inner class Fight(val initiator: User, val victim: User, val events: List<FightEvent>) {
-        constructor(initiator: User, victim: User, vararg categories: Attack.Category) : this(initiator, victim, kotlin.run {
+    inner class Fight(val initiator: User, val victim: User, seed: Long, vararg categories: Attack.Category) {
+        val events: List<FightEvent>
+        val rand: Random
+        init {
+            rand = Random(seed)
             initiator.hp = 50.0 + initiator.level * 2
             victim.hp = 50.0 + victim.level * 2
 
             val e = mutableListOf<FightEvent>()
 
             if (victim.isBot) {
-                val attack = Attack.pickAttack(0, listOf(Attack.Category.BOT))
-                val damage = attack.damage(0)
+                val attack = Attack.pickAttack(0, rand, listOf(Attack.Category.BOT))
+                val damage = attack.damage(rand, 0)
                 e.add(FightEvent.AttackEvent(victim, initiator, attack, damage, 0.0, victim.hp))
                 e.add(FightEvent.WinEvent(victim, initiator, 0.0, 0.0, 0.0, victim.hp))
             } else {
                 var winner: User? = null
 
                 for (i in 0..5) {
-                    val aAttack = Attack.pickAttack(initiator.level, categories.toList())
-                    val aDamage = aAttack.damage(initiator.level)
+                    val aAttack = Attack.pickAttack(initiator.level, rand, categories.toList())
+                    val aDamage = aAttack.damage(rand, initiator.level)
                     victim.hp -= aDamage
                     victim.hp = victim.hp.coerceAtLeast(0.0)
                     e.add(FightEvent.AttackEvent(initiator, victim, aAttack, aDamage, initiator.hp, victim.hp))
@@ -56,8 +61,8 @@ class Fights(private val bot: Bot) {
                         break
                     }
 
-                    val bAttack = Attack.pickAttack(victim.level, categories.toList())
-                    val bDamage = bAttack.damage(victim.level)
+                    val bAttack = Attack.pickAttack(victim.level, rand, categories.toList())
+                    val bDamage = bAttack.damage(rand, victim.level)
                     initiator.hp -= bDamage
                     initiator.hp = initiator.hp.coerceAtLeast(0.0)
                     e.add(FightEvent.AttackEvent(victim, initiator, bAttack, bDamage, initiator.hp, victim.hp))
@@ -86,8 +91,8 @@ class Fights(private val bot: Bot) {
                     ))
                 }
             }
-            e
-        })
+            events = e
+        }
     }
 
     companion object {
@@ -100,11 +105,11 @@ class Fights(private val bot: Bot) {
         }
     }
 
-    suspend fun sendFight(event: CommandInteraction, initiator: net.dv8tion.jda.api.entities.User, victim: net.dv8tion.jda.api.entities.User, guild: Guild) {
+    suspend fun sendFight(event: CommandInteraction, initiator: net.dv8tion.jda.api.entities.User, victim: net.dv8tion.jda.api.entities.User, guild: Guild, seed: Long) {
         val initiatorU = User(initiator.idLong, bot.leveling.level(initiator, guild).toInt(), initiator.isBot, 0.0)
         val victimU = User(victim.idLong, bot.leveling.level(victim, guild).toInt(), victim.isBot, 0.0)
         val fight = bot.database.trnsctn {
-            Fight(initiatorU, victimU, *guild.m.fightCategoryList.toList().toTypedArray())
+            Fight(initiatorU, victimU, seed, *guild.m.fightCategoryList.toList().toTypedArray())
         }
 
         val attackerXPGain = fight.events.last().run { if (this is FightEvent.TieEvent) this.xpGain else (if ((this as FightEvent.WinEvent).winner.discordID == initiator.idLong) winnerXPGain else loserXPGain) }
@@ -130,7 +135,7 @@ class Fights(private val bot: Bot) {
             delay(1000L)
 
             str.appendLine(when (item) {
-                is FightEvent.AttackEvent -> item.attack.string("<@${item.attacker.discordID}>", "<@${item.victim.discordID}>") + " (${if (item.damage.isInfinite()) "999999999" else item.damage.roundToLong().toString()} damage)"
+                is FightEvent.AttackEvent -> item.attack.string("<@${item.attacker.discordID}>", "<@${item.victim.discordID}>", fight.rand) + " (${if (item.damage.isInfinite()) "999999999" else item.damage.roundToLong().toString()} damage)"
                 is FightEvent.WinEvent -> "**<@${item.winner.discordID}> won, gaining ${item.winnerXPGain.roundToLong()} XP!  <@${item.loser.discordID}> lost, but gained ${item.loserXPGain.roundToLong()} XP.**"
                 is FightEvent.TieEvent -> "**Tie!  Both parties gain ${item.xpGain.roundToLong()} XP!**"
             })
@@ -172,7 +177,8 @@ class Fights(private val bot: Bot) {
 
                 pts.fightCooldown = now
             }
-            bot.fights.sendFight(event, attacker.user, user.user, guild)
+            val seed = r.nextLong()
+            bot.fights.sendFight(event, attacker.user, user.user, guild, seed)
         }
     }
 }

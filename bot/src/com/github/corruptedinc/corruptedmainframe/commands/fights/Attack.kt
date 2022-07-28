@@ -1,8 +1,7 @@
 package com.github.corruptedinc.corruptedmainframe.commands.fights
 
 import com.github.corruptedinc.corruptedmainframe.utils.runIf
-import kotlin.random.Random.Default.nextDouble
-import kotlin.random.Random.Default.nextInt
+import kotlin.random.Random
 
 interface Attack {
     enum class Category(val bitmask: ULong, val pickable: Boolean = true) {
@@ -24,8 +23,10 @@ interface Attack {
             SimpleAttack(0.05, "%a bit %v!", 0, 50.0, 0.0, 0.5),
             SimpleAttack(0.05, "%a slammed %v!", 10, 50.0, 0.0, 0.5),
             SimpleAttack(0.05, "%a headbutted %v!", 10, 50.0, 0.0, 1.0),
+            InstakillAttack(0.005, "%a performed their first surgery!", 0),
             InstakillAttack(0.001, "%a bit %v and gave them rabies!", 0),
             InstakillAttack(0.01, "%a seduced %v!", 5),
+            InstakillAttack(0.001, "%v learned what polonium tastes like!", 0),
 
             // FRC
             SimpleAttack(Category.FRC, 0.5, "%a ran %v over with a robot!", 0, 10.0, 1.0, 0.5),
@@ -48,6 +49,10 @@ interface Attack {
             SimpleAttack(listOf(Category.TECHNICAL), 0.5, "%a stabbed %v with a screwdriver!", 5, 50.0, 1.0, 0.25),
             SimpleAttack(listOf(Category.TECHNICAL, Category.FRC), 0.5, "%a updated %v's firmware!", 10, 50.0, 1.0, 0.25),
             SimpleAttack(listOf(Category.TECHNICAL, Category.FRC), 0.5, "%a touched %v's BIOS!", 10, 50.0, 1.0, 0.25),
+            SimpleAttack(listOf(Category.TECHNICAL, Category.FRC), 0.5, "%v forgot to use git!", 10, 50.0, 1.0, 0.25),
+            SimpleAttack(listOf(Category.TECHNICAL, Category.FRC), 0.25, "%v forgot to start a transaction!", 10, 50.0, 1.0, 0.25),
+            SimpleAttack(listOf(Category.TECHNICAL, Category.FRC), 0.25, "%a 'fixed' %v's code!" /* this is a joke please do fix my code */, 10, 50.0, 1.0, 0.25),
+            SimpleAttack(listOf(Category.TECHNICAL, Category.FRC), 0.125, "%a peed in the UPW supply!", 10, 50.0, 1.0, 0.25),
             InstakillAttack(listOf(Category.TECHNICAL, Category.FRC), 0.05, "Oops, %v's files have been encrypted!", 0),
 
             // bot only
@@ -61,10 +66,12 @@ interface Attack {
             InstakillAttack(listOf(Category.BOT), 0.5, "%a pulverised %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a eviscerated %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a vaporized %v!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.5, "%a consumed %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.1, "%a compressed some lithium-6 deuteride!", 0),
             InstakillAttack(listOf(Category.BOT), 0.1, "%a is become death, destroyer of worlds!", 0),
             InstakillAttack(listOf(Category.BOT), 0.25, "%a violated the geneva conventions!", 0),
-            
+            InstakillAttack(listOf(Category.BOT), 0.25, "%a ground %v to dust!", 0),
+
             // LINUX
             // REGULAR ATTACKS
             SimpleAttack(Category.LINUX, 1.0, "%a unleashed the penguins!", 0, 10.0, 1.0, 0.45),
@@ -87,9 +94,9 @@ interface Attack {
             // TODO: Balance damage and scaling (Probably won't happen, but this way I feel better about myself)
         )
 
-        fun pickAttack(level: Int, categories: List<Category> = listOf(Category.GENERAL)): Attack {
-            val available = attacks.filter { it.usable(level, categories) }.shuffled()
-            var value = nextDouble(available.sumOf { it.odds(level) })
+        fun pickAttack(level: Int, rand: Random, categories: List<Category> = listOf(Category.GENERAL)): Attack {
+            val available = attacks.filter { it.usable(level, categories) }.shuffled(rand)
+            var value = rand.nextDouble(available.sumOf { it.odds(level) })
             for (a in available) {
                 if (value < a.odds(level)) return a
                 value -= a.odds(level)
@@ -101,9 +108,9 @@ interface Attack {
 
     fun usable(level: Int, categories: List<Category>): Boolean
 
-    fun string(a: String, v: String): String
+    fun string(a: String, v: String, rand: Random): String
 
-    fun damage(level: Int): Double
+    fun damage(rand: Random, level: Int): Double
 
     fun odds(level: Int): Double
 
@@ -113,8 +120,8 @@ interface Attack {
 
         constructor(odds: Double, format: String, minLevel: Int, minDamage: Double, damageScaling: Double, randomFactor: Double) : this(listOf(Category.GENERAL), odds, format, minLevel, minDamage, damageScaling, randomFactor)
 
-        override fun damage(level: Int): Double {
-            return (minDamage + (level - minLevel) * damageScaling * 2).runIf(randomFactor != 0.0) { this * nextDouble(1.0 - randomFactor, 1.0 + randomFactor) }
+        override fun damage(rand: Random, level: Int): Double {
+            return (minDamage + (level - minLevel) * damageScaling * 2).runIf(randomFactor != 0.0) { this * rand.nextDouble(1.0 - randomFactor, 1.0 + randomFactor) }
         }
 
         override fun usable(level: Int, categories: List<Category>): Boolean {
@@ -125,8 +132,8 @@ interface Attack {
             return odds
         }
 
-        override fun string(a: String, v: String): String {
-            return format.replace("%a", a).replace("%v", v).replace("%ri(\\d+)-(\\d+)".toRegex()) { nextInt(it.groups[1]!!.value.toInt(), it.groups[2]!!.value.toInt()).toString() }
+        override fun string(a: String, v: String, rand: Random): String {
+            return format.replace("%a", a).replace("%v", v).replace("%ri(\\d+)-(\\d+)".toRegex()) { rand.nextInt(it.groups[1]!!.value.toInt(), it.groups[2]!!.value.toInt()).toString() }
         }
     }
 
@@ -138,11 +145,11 @@ interface Attack {
             return category.intersect(categories.toSet()).isNotEmpty() && level >= minLevel
         }
 
-        override fun string(a: String, v: String): String {
-            return format.replace("%a", a).replace("%v", v).replace("%ri(\\d+)-(\\d+)".toRegex()) { nextInt(it.groups[1]!!.value.toInt(), it.groups[2]!!.value.toInt()).toString() }
+        override fun string(a: String, v: String, rand: Random): String {
+            return format.replace("%a", a).replace("%v", v).replace("%ri(\\d+)-(\\d+)".toRegex()) { rand.nextInt(it.groups[1]!!.value.toInt(), it.groups[2]!!.value.toInt()).toString() }
         }
 
-        override fun damage(level: Int): Double {
+        override fun damage(rand: Random, level: Int): Double {
             return Double.POSITIVE_INFINITY
         }
 

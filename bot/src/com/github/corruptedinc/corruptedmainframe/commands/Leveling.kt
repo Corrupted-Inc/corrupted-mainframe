@@ -160,10 +160,10 @@ class Leveling(private val bot: Bot) {
                 stripPings = false)).ephemeral().await()
         }
 
-        @Language("sql") val rankStatement =
-            "UPDATE points SET rank = RankTable.rank " +
-                    "FROM (SELECT id, DENSE_RANK() OVER(ORDER BY points DESC, id) AS rank FROM points WHERE guild = ?) " +
-                    "AS RankTable WHERE RankTable.id = points.id"
+        @Language("sql") val rankStatement = """
+            UPDATE points SET rank = RankTable.rank 
+            FROM (SELECT id, DENSE_RANK() OVER(ORDER BY points DESC, id) 
+            AS rank FROM points WHERE guild = ?) AS RankTable WHERE RankTable.id = points.id""".trimIndent()
 
         bot.commands.register(slash("leaderboard", "Shows the server level leaderboard.")) { event ->
             // update rank column

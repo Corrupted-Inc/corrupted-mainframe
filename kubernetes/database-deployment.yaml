@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    com.github.blahblahbloopster.service: db
+  name: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      com.github.blahblahbloopster.service: db
+  template:
+    metadata:
+      labels:
+        com.github.blahblahbloopster.service: db
+    spec:
+      containers:
+        - name: database
+          image: postgres:13.7-alpine3.16
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-password
+                  key: password
+                  optional: false
+            - name: POSTGRES_USER
+              value: postgres
+          ports:
+              - containerPort: 5432
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: postgres-storage
+      restartPolicy: Always
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-storage

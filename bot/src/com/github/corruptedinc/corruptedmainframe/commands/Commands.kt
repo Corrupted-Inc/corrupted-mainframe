@@ -17,6 +17,7 @@ import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.GuildChannel
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.MessageEmbed.Field
+import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.interaction.command.*
 import net.dv8tion.jda.api.exceptions.ErrorResponseException
@@ -260,7 +261,7 @@ class Commands(val bot: Bot) {
                     val r = mutableListOf<String>()
                     while (result.next()) {
                         for (c in 1..result.metaData.columnCount) {
-                            r.add(result.getObject(c).toString())
+                            r.add(result.getObject(c)?.toString() ?: "null")
                         }
                         output.add(Row(*r.toTypedArray()))
                         r.clear()
@@ -288,8 +289,7 @@ class Commands(val bot: Bot) {
         bot.fights.registerCommands()
         bot.leveling.registerCommands()
 
-        bot.scope.launch(Dispatchers.IO) {
-            bot.jda.awaitReady()
+        bot.jda.listener<ReadyEvent> {
             finalizeCommands()
         }
     }
