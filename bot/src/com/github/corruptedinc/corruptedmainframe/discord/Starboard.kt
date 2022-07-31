@@ -73,13 +73,12 @@ class Starboard(private val bot: Bot) {
 
             // checks if the message has already been starred in the same channel by a different starboard
             @Language("SQL") val fromAnotherStarboardSQL = """
-                SELECT COUNT(id) FROM starred_messages inner join starboards s on starred_messages.starboard = s.id where channel = ${board.channel} and message_id = $messageID
+                SELECT COUNT(starred_messages.id) FROM starred_messages inner join starboards s on starred_messages.starboard = s.id where channel = ${board.channel} and message_id = $messageID
             """.trimIndent()
 
-            val res = exec(fromAnotherStarboardSQL, transform = { it })!!
-            res.next()
+            val count = exec(fromAnotherStarboardSQL) { it.next(); it.getLong(1) }!!
 
-            val alreadyStarred = res.getLong(1) > 0
+            val alreadyStarred = count > 0
 
             if (alreadyStarred) return@trnsctn Triple(true, board.channel, board.name)
 

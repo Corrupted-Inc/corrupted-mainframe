@@ -3,13 +3,12 @@ package com.github.corruptedinc.corruptedmainframe.commands
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
+import com.github.corruptedinc.corruptedmainframe.gen.GeneratedCommands
 import com.github.corruptedinc.corruptedmainframe.utils.*
 import dev.minn.jda.ktx.CoroutineEventListener
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.interactions.replyPaginator
 import dev.minn.jda.ktx.listener
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.EmbedBuilder
@@ -17,7 +16,6 @@ import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.GuildChannel
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.MessageEmbed.Field
-import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.interaction.command.*
 import net.dv8tion.jda.api.exceptions.ErrorResponseException
@@ -175,6 +173,7 @@ class Commands(val bot: Bot) {
 
     @Suppress("SwallowedException")
     suspend fun finalizeCommands() {
+        newCommands.addAll(GeneratedCommands.commandData().apply { println("Loaded $size commands from annotation processor") })
         bot.log.info("Registering ${newCommands.size} commands...")
         bot.jda.guilds.map {
             bot.scope.launch {
@@ -190,6 +189,8 @@ class Commands(val bot: Bot) {
         bot.jda.listener<GuildJoinEvent> { event ->
             event.guild.updateCommands().addCommands(newCommands).await()
         }
+
+        GeneratedCommands.registerListeners(bot)
     }
 
     fun assertAdmin(event: CommandInteraction) {
@@ -213,7 +214,7 @@ class Commands(val bot: Bot) {
                               "[Basic permissions](${basicInvite(bot.jda.selfUser.id)})"
             )).await()
         }
-        
+
         register(slash("slots", "Play the slots")) { event ->
             val emotes = ":cherries:, :lemon:, :seven:, :broccoli:, :peach:, :green_apple:".split(", ")
 
@@ -289,7 +290,7 @@ class Commands(val bot: Bot) {
         bot.fights.registerCommands()
         bot.leveling.registerCommands()
 
-        bot.jda.listener<ReadyEvent> {
+        bot.onReady {
             finalizeCommands()
         }
     }

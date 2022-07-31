@@ -13,6 +13,7 @@ import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException
 import com.sedmelluq.discord.lavaplayer.track.playback.AudioFrame
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
+import com.github.corruptedinc.corruptedmainframe.utils.onReady
 import com.google.common.cache.LoadingCache
 import com.sedmelluq.discord.lavaplayer.track.*
 import dev.minn.jda.ktx.listener
@@ -24,13 +25,11 @@ import net.dv8tion.jda.api.audio.hooks.ConnectionListener
 import net.dv8tion.jda.api.audio.hooks.ConnectionStatus
 import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.entities.VoiceChannel
-import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.voice.GuildVoiceMoveEvent
 import org.jetbrains.exposed.dao.exceptions.EntityNotFoundException
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.nio.ByteBuffer
-import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 class Audio(val bot: Bot) {
@@ -46,7 +45,7 @@ class Audio(val bot: Bot) {
     }
 
     init {
-        bot.jda.listener<ReadyEvent> { _ ->
+        bot.onReady {
             for (item in bot.database.audioDB.musicStates()) {
                 // Because sharding, only restart playing for guilds that it's actually connected to
                 if (bot.jda.guilds.any { it.idLong == bot.database.trnsctn { item.guild.discordId } }) {

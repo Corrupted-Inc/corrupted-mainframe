@@ -1,6 +1,7 @@
 FROM eclipse-temurin
 
-COPY corrupted-mainframe.jar plugins config.json /root/
+ADD corrupted-mainframe.jar config.json /root/
+ADD plugins/ /root/plugins
 
 WORKDIR /root/
 ENTRYPOINT ["java"]

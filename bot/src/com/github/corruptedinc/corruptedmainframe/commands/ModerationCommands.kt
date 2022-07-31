@@ -5,25 +5,21 @@ import com.github.corruptedinc.corruptedmainframe.commands.fights.Attack
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB
-import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoleMessage.Companion
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoleMessages
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoles
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
-import com.github.corruptedinc.corruptedmainframe.utils.*
+import com.github.corruptedinc.corruptedmainframe.utils.Emotes
+import com.github.corruptedinc.corruptedmainframe.utils.biasedLevenshteinInsensitive
+import com.github.corruptedinc.corruptedmainframe.utils.ephemeral
+import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
 import dev.minn.jda.ktx.await
-import dev.minn.jda.ktx.interactions.Command
 import dev.minn.jda.ktx.listener
 import kotlinx.coroutines.delay
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.Permission
-import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.MessageEmbed.Field
-import net.dv8tion.jda.api.entities.TextChannel
 import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent
-import net.dv8tion.jda.api.events.interaction.component.SelectMenuInteractionEvent
-import net.dv8tion.jda.api.exceptions.PermissionException
 import net.dv8tion.jda.api.interactions.commands.OptionType
-import net.dv8tion.jda.api.interactions.commands.build.Commands.message
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
 import net.dv8tion.jda.api.interactions.commands.build.OptionData.MAX_CHOICES
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
@@ -225,7 +221,7 @@ fun registerCommands(bot: Bot) {
                     }
                 }
 
-                val fields = mutableListOf<MessageEmbed.Field>()
+                val fields = mutableListOf<Field>()
 
                 for (item in output) {
                     val v = StringBuilder()
@@ -236,10 +232,7 @@ fun registerCommands(bot: Bot) {
                         v.appendLine(event.guild!!.getRoleById(role.second)!!.name)
                     }
 
-                    fields.add(
-                        MessageEmbed.Field(event.guild!!.getTextChannelById(item.first)!!.name,
-                            v.toString(), false)
-                    )
+                    fields.add(Field(event.guild!!.getTextChannelById(item.first)!!.name, v.toString(), false))
                 }
 
                 event.replyEmbeds(embed("Reaction Roles", content = fields)).ephemeral().await()

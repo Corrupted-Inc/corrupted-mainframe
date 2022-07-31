@@ -1,10 +1,12 @@
 plugins {
     id("kotlin")
 //    id("io.gitlab.arturbosch.detekt").version("1.18.0")
+    id("com.google.devtools.ksp") version "1.7.0-1.0.6"
 }
 
 sourceSets.main {
     java.srcDirs("src")
+    java.srcDirs("build/generated/ksp/main/kotlin/")
     resources.srcDirs("resources")
 }
 
@@ -30,6 +32,9 @@ dependencies {
     runtimeOnly("com.sedmelluq:lavaplayer-common:1.0.6")
     implementation("ch.obermuhlner:big-math:2.3.0")
     implementation("com.github.ben-manes.caffeine:caffeine:3.0.6")
+    implementation(project(":annotations"))
+    compileOnly(project(":annotationprocessor"))
+    ksp(project(":annotationprocessor"))
 
     // figure out how to replace/remove if possible
     implementation("org.ocpsoft.prettytime:prettytime-nlp:5.0.2.Final")

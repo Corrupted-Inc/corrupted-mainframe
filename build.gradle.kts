@@ -19,6 +19,12 @@ allprojects {
     }
 }
 
+buildscript {
+    dependencies {
+        classpath(kotlin("gradle-plugin", version = "1.7.0"))
+    }
+}
+
 application {
     mainClass.set("MainKt")
 }

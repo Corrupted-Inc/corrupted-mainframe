@@ -10,3 +10,5 @@ plugins
 image/corrupted-mainframe.jar
 image/plugins/*
 image/config.json
+image?*/
+*/build/

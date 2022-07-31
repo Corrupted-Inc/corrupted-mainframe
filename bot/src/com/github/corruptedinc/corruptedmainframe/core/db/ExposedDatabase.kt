@@ -40,6 +40,7 @@ class ExposedDatabase(val db: Database, bot: Bot) {
                 Points,
                 Reminders,
                 StarredMessages,
+                Starboards,
                 CommandRuns,
                 *frcDB.tables(),
             )

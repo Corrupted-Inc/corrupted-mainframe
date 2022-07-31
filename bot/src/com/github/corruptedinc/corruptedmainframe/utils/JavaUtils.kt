@@ -101,3 +101,7 @@ inline fun <T> T.runIf(condition: Boolean, block: T.() -> T) = if (condition) bl
 inline fun <T> T.runIf(condition: (T) -> Boolean, block: T.() -> T) = if (condition(this)) block() else this
 
 fun ReplyCallbackAction.ephemeral() = setEphemeral(true)
+
+typealias CmdCtx = CommandContext
+
+typealias AtcmpCtx = AutocompleteContext

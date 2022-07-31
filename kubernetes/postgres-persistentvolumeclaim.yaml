@@ -7,8 +7,6 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  volumeMode: Filesystem
-  volumeName: postgres-storage
   resources:
     requests:
       storage: 4G
