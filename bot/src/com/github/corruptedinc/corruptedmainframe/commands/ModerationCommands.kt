@@ -8,7 +8,6 @@ import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoleMessages
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRoles
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
-import com.github.corruptedinc.corruptedmainframe.utils.Emotes
 import com.github.corruptedinc.corruptedmainframe.utils.biasedLevenshteinInsensitive
 import com.github.corruptedinc.corruptedmainframe.utils.ephemeral
 import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
@@ -347,7 +346,7 @@ fun registerCommands(bot: Bot) {
                 val multiplier = event.getOption("multiplier")!!.asDouble
 
                 val emote = event.guild!!.getEmoteById(emoteName.substringAfterLast(':').removeSuffix(">"))?.asMention
-                    ?: if (Emotes.isValid(emoteName)) emoteName else null
+                    ?: if (bot.emoji.isValid(emoteName)) emoteName else null
                 emote ?: throw CommandException("Emoji not found!")
                 if (threshold !in 1..1_000_000) throw CommandException("Invalid threshold!")
                 if (multiplier !in 0.0..1000.0) throw CommandException("Invalid multiplier!")
@@ -382,7 +381,7 @@ fun registerCommands(bot: Bot) {
                     val multiplier = event.getOption("multiplier")?.asDouble ?: existing.xpMultiplier
 
                     val emote = event.guild!!.getEmoteById(emoteName.substringAfterLast(':').removeSuffix(">"))?.asMention
-                        ?: if (Emotes.isValid(emoteName)) emoteName else null
+                        ?: if (bot.emoji.isValid(emoteName)) emoteName else null
                     emote ?: throw CommandException("Emote not found!")
                     if (threshold !in 1..1_000_000) throw CommandException("Invalid threshold!")
                     if (multiplier !in 0.0..1000.0) throw CommandException("Invalid multiplier!")

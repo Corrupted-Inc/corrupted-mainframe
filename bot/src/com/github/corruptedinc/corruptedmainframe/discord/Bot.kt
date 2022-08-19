@@ -11,7 +11,7 @@ import com.github.corruptedinc.corruptedmainframe.commands.fights.Fights
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.plugin.PluginLoader
-import com.github.corruptedinc.corruptedmainframe.utils.Emotes
+import com.github.corruptedinc.corruptedmainframe.utils.Emoji
 import com.github.corruptedinc.corruptedmainframe.utils.PathDrawer
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.injectKTX
@@ -67,6 +67,7 @@ class Bot(val config: Config) {
     val starboard = Starboard(this)
     val commands = Commands(this)
     val fights = Fights(this)
+    val emoji = Emoji()
     // Robotics
     val theBlueAlliance = TheBlueAlliance(config.blueAllianceToken, scope)
     val pathDrawer = PathDrawer(this)
@@ -91,8 +92,6 @@ class Bot(val config: Config) {
             audio.gracefulShutdown()
             log.info("Finished, exiting")
         })
-
-        Emotes
 
         jda.listener<ReadyEvent> { event ->
             log.info("Logged in as ${event.jda.selfUser.asTag}")
