@@ -5,7 +5,7 @@ import kotlin.random.Random
 
 interface Attack {
     enum class Category(val bitmask: ULong, val pickable: Boolean = true) {
-        GENERAL(0b1U), FRC(0b10U), TECHNICAL(0b100U), LINUX(0b1000U), BOT(0b1UL shl 63, false)
+        GENERAL(0b1U), FRC(0b10U), TECHNICAL(0b100U), LINUX(0b1000U), MINDUSTRY(0b10000U), BOT(0b1UL shl 63, false)
     }
 
     companion object {
@@ -23,10 +23,10 @@ interface Attack {
             SimpleAttack(0.05, "%a bit %v!", 0, 50.0, 0.0, 0.5),
             SimpleAttack(0.05, "%a slammed %v!", 10, 50.0, 0.0, 0.5),
             SimpleAttack(0.05, "%a headbutted %v!", 10, 50.0, 0.0, 1.0),
-            InstakillAttack(0.005, "%a performed their first surgery!", 0),
             InstakillAttack(0.001, "%a bit %v and gave them rabies!", 0),
             InstakillAttack(0.01, "%a seduced %v!", 5),
             InstakillAttack(0.001, "%v learned what polonium tastes like!", 0),
+            InstakillAttack(0.001, "%v 'accidentally' fell out a window in a Moscow hospital!", 0),
 
             // FRC
             SimpleAttack(Category.FRC, 0.5, "%a ran %v over with a robot!", 0, 10.0, 1.0, 0.5),
@@ -71,6 +71,8 @@ interface Attack {
             InstakillAttack(listOf(Category.BOT), 0.1, "%a is become death, destroyer of worlds!", 0),
             InstakillAttack(listOf(Category.BOT), 0.25, "%a violated the geneva conventions!", 0),
             InstakillAttack(listOf(Category.BOT), 0.25, "%a ground %v to dust!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.1, "%a deorbited the moon!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.1, "%a demonstrated the formation of trinitite to %v!", 0),
 
             // LINUX
             // REGULAR ATTACKS
