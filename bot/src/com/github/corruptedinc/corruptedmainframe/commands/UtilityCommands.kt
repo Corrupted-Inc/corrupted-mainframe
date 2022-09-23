@@ -17,6 +17,8 @@ import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
+import net.dv8tion.jda.api.utils.FileUpload
+import net.dv8tion.jda.api.utils.messages.MessageEditData
 import org.jetbrains.exposed.sql.Op
 import org.jetbrains.exposed.sql.and
 import org.ocpsoft.prettytime.nlp.PrettyTimeParser
@@ -83,7 +85,8 @@ fun registerUtilityCommands(bot: Bot) {
                             )
                         )
                     )
-                    hook.editOriginal(Message("```\n" + table(
+                    hook.editOriginal(
+                        MessageEditData.fromMessage(Message("```\n" + table(
                         arrayOf(Row("R1", "R2", "R3", "B1", "B2", "B3", "Red", "Blue"))
                                 + matches.sortedBy { it.matchNumber }
                             .map {
@@ -101,7 +104,7 @@ fun registerUtilityCommands(bot: Bot) {
                                     it.alliances.blue.score.run { if (blueWon) "$this*" else "$this " },
                                 )
                             }
-                    ) + "```", embed)).await()
+                    ) + "```", embed))).await()
                     return@launch
                 }
 
@@ -139,7 +142,7 @@ fun registerUtilityCommands(bot: Bot) {
         val drawn = bot.paths.renderAutos(team, year, eventObj.key) ?: throw CommandException("No data found!")
 
         hook.editOriginalEmbeds(Commands.embed("$team's Autos at ${eventObj.shortName ?: eventObj.name}"))
-            .addFile(drawn, "autos.png")
+            .setFiles(FileUpload.fromData(drawn, "autos.png"))
             .await()
     }
 

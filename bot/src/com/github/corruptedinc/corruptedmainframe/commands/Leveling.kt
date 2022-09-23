@@ -10,20 +10,19 @@ import dev.minn.jda.ktx.listener
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.*
+import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import net.dv8tion.jda.api.interactions.commands.OptionType
-import net.dv8tion.jda.api.interactions.commands.build.Commands
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
 import net.dv8tion.jda.api.interactions.commands.build.Commands.user
 import org.intellij.lang.annotations.Language
 import org.jetbrains.exposed.sql.and
-import java.time.Instant
 import kotlin.math.*
 
 @Suppress("MagicNumber")
 class Leveling(private val bot: Bot) {
     companion object {
-        const val POINTS_PER_MESSAGE = 1.0
+        const val POINTS_PER_MESSAGE = 2.0
         private const val LEVEL_BAR_WIDTH = 24
 
         fun fightPoints(level: Double, zeroToOne: Double) = ((10 * (level + 2).pow(0.25) + 10) * zeroToOne) + 5
@@ -33,11 +32,11 @@ class Leveling(private val bot: Bot) {
 
     init {
         bot.jda.listener<MessageReceivedEvent> { event ->
-            if (!event.isFromGuild || event.channelType != ChannelType.TEXT) return@listener
+            if (!event.isFromGuild) return@listener
             if (bot.database.bannedT(event.author)) return@listener
             if (event.author == bot.jda.selfUser) return@listener
             bot.scope.launch {
-                addPoints(event.author, POINTS_PER_MESSAGE, event.textChannel)
+                addPoints(event.author, POINTS_PER_MESSAGE, event.guildChannel)
             }
         }
     }
@@ -52,7 +51,7 @@ class Leveling(private val bot: Bot) {
 
     fun points(user: User, guild: Guild) = bot.database.points(user, guild)
 
-    suspend fun addPoints(user: User, points: Double, channel: TextChannel) {
+    suspend fun addPoints(user: User, points: Double, channel: GuildMessageChannel) {
         if (user.isBot) return
 
         // I'm aware this is bad, but this is run in a spot where there isn't any catching

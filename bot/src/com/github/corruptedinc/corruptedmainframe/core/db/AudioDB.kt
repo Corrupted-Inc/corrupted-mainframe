@@ -4,7 +4,7 @@ import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Compan
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import net.dv8tion.jda.api.entities.Guild
-import net.dv8tion.jda.api.entities.VoiceChannel
+import net.dv8tion.jda.api.entities.channel.middleman.AudioChannel
 import org.jetbrains.exposed.dao.LongEntity
 import org.jetbrains.exposed.dao.LongEntityClass
 import org.jetbrains.exposed.dao.exceptions.EntityNotFoundException
@@ -54,7 +54,7 @@ class AudioDB(val database: ExposedDatabase, val bot: Bot) {
         return database.trnsctn { MusicState.find { MusicStates.guild eq guild.m.id }.toList() }
     }
 
-    fun musicState(guild: Guild, channel: VoiceChannel): MusicState? {
+    fun musicState(guild: Guild, channel: AudioChannel): MusicState? {
         return database.trnsctn { MusicState.find {
             (MusicStates.guild eq guild.m.id) and (MusicStates.channel eq channel.idLong)
         }.firstOrNull() }
@@ -120,7 +120,7 @@ class AudioDB(val database: ExposedDatabase, val bot: Bot) {
         }
     }
 
-    fun createMusicState(channel: VoiceChannel, tracks: List<String>): MusicState {
+    fun createMusicState(channel: AudioChannel, tracks: List<String>): MusicState {
         return database.trnsctn {
             val oldState = MusicState.find { MusicStates.channel eq channel.idLong }.firstOrNull()
             if (oldState != null) clearMusicState(oldState)

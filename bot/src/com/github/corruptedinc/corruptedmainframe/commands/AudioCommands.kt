@@ -10,7 +10,6 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -19,6 +18,8 @@ import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.audio.hooks.ConnectionListener
 import net.dv8tion.jda.api.audio.hooks.ConnectionStatus
 import net.dv8tion.jda.api.entities.*
+import net.dv8tion.jda.api.entities.channel.middleman.AudioChannel
+import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
@@ -86,7 +87,7 @@ fun registerAudioCommands(bot: Bot, commands: Commands) {
         if (t.isEmpty()) throw CommandException("Failed to load '$source'")
 
         val player = Audio.AudioPlayerSendHandler(bot.audio.playerManager.createPlayer())
-        val state = bot.audio.createState(channel as VoiceChannel, player, t)
+        val state = bot.audio.createState(channel as AudioChannel, player, t)
         validateInChannel(event.member, state)
 
         player.audioPlayer.addListener(object : AudioEventAdapter() {

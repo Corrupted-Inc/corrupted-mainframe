@@ -1,13 +1,13 @@
 package com.github.corruptedinc.corruptedmainframe.core.db
 
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
-import net.dv8tion.jda.api.entities.*
+import net.dv8tion.jda.api.entities.Guild
+import net.dv8tion.jda.api.entities.Message
+import net.dv8tion.jda.api.entities.emoji.Emoji
 import org.jetbrains.exposed.dao.LongEntity
 import org.jetbrains.exposed.dao.LongEntityClass
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.dao.id.LongIdTable
-import org.jetbrains.exposed.sql.and
-import java.time.Instant
 
 class ModerationDB(private val database: ExposedDatabase) {
     fun tables() = arrayOf(AutoRoleMessages, AutoRoles)
@@ -44,7 +44,7 @@ class ModerationDB(private val database: ExposedDatabase) {
         }
     }
 
-    fun autoRole(message: Long, emote: MessageReaction.ReactionEmote): Long? {
+    fun autoRole(message: Long, emote: Emoji): Long? {
         return database.trnsctn {
             val msg = AutoRoleMessage.find { AutoRoleMessages.message eq message }.firstOrNull()?.id
                 ?: return@trnsctn null

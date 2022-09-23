@@ -19,7 +19,6 @@ import dev.minn.jda.ktx.listener
 import kotlinx.coroutines.*
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.entities.Activity
-import net.dv8tion.jda.api.entities.ChannelType
 import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
@@ -44,7 +43,7 @@ class Bot(val config: Config) {
         // Specify the intents we need
         // Note the absence of the PRESENCE intent; this vastly reduces traffic to the bot
         GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS,
-        GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES, GatewayIntent.GUILD_EMOJIS)
+        GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES, GatewayIntent.GUILD_EMOJIS_AND_STICKERS)
         .disableCache(CacheFlag.ACTIVITY, CacheFlag.CLIENT_STATUS, CacheFlag.ONLINE_STATUS)  // disable unneeded cache flags to improve performance
         // Add JDA KTX to the mix, which allows for some coroutine-related niceties
         .injectKTX()
@@ -144,20 +143,20 @@ class Bot(val config: Config) {
         @Suppress("ReturnCount")
         jda.listener<MessageReactionAddEvent> { event ->
             if (event.user?.let { database.bannedT(it) } == true) return@listener
-            val roleId = database.moderationDB.autoRole(event.messageIdLong, event.reactionEmote) ?: return@listener
+            val roleId = database.moderationDB.autoRole(event.messageIdLong, event.reaction.emoji) ?: return@listener
             val role = event.guild.getRoleById(roleId) ?: return@listener
 
             if (!event.reaction.retrieveUsers().complete().any { it.id == jda.selfUser.id }) return@listener
 
-            event.guild.addRoleToMember(event.userId, role).queue()
+            event.guild.addRoleToMember(event.retrieveUser().await(), role).queue()
         }
 
         @Suppress("ReturnCount")
         jda.listener<MessageReactionRemoveEvent> { event ->
             if (event.user?.let { database.bannedT(it) } == true) return@listener
-            val roleId = database.moderationDB.autoRole(event.messageIdLong, event.reactionEmote) ?: return@listener
+            val roleId = database.moderationDB.autoRole(event.messageIdLong, event.reaction.emoji) ?: return@listener
             val role = event.guild.getRoleById(roleId) ?: return@listener
-            event.guild.removeRoleFromMember(event.userId, role).queue()
+            event.guild.removeRoleFromMember(event.retrieveUser().await(), role).queue()
         }
 
         jda.listener<GuildJoinEvent> {
@@ -173,15 +172,6 @@ class Bot(val config: Config) {
     }
 
     init {
-        jda.listener<MessageReceivedEvent> { event ->
-            if (!event.isFromGuild || event.channelType != ChannelType.TEXT) return@listener
-            if (database.bannedT(event.author)) return@listener
-            if (event.author == jda.selfUser) return@listener
-            scope.launch {
-                leveling.addPoints(event.author, Leveling.POINTS_PER_MESSAGE, event.textChannel)
-            }
-        }
-
         jda.listener<ButtonInteractionEvent> { event ->
             if (database.bannedT(event.user)) return@listener
             buttonListeners.forEach { it(event) }

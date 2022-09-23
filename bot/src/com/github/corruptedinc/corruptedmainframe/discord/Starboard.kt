@@ -8,8 +8,8 @@ import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Starre
 import dev.minn.jda.ktx.await
 import dev.minn.jda.ktx.listener
 import net.dv8tion.jda.api.entities.Message
-import net.dv8tion.jda.api.entities.TextChannel
 import net.dv8tion.jda.api.entities.User
+import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import org.intellij.lang.annotations.Language
 import org.jetbrains.exposed.sql.Transaction
@@ -37,14 +37,14 @@ class Starboard(private val bot: Bot) {
                     // make a list of the values we need
                     // the Starboard object itself isn't returned because it doesn't work outside of the transaction
                     g.starboards.map { Triple(it.emote, it.threshold, it.id.value) }
-            }.firstOrNull { (if (':' in it.first) event.reactionEmote.asReactionCode else event.reactionEmote.name) == it.first } ?: return@listener  // find a starboard matching the emote
+            }.firstOrNull { (if (':' in it.first) event.reaction.emoji.asReactionCode else event.reaction.emoji.name) == it.first } ?: return@listener  // find a starboard matching the emote
 
             // if there's enough reactions, star it (the function checks if it's already been starred)
             // we have to retrieve the message to get the reaction counts
             val msg = event.retrieveMessage().await()
-            val reaction = msg.reactions.find { event.reactionEmote.asReactionCode == it.reactionEmote.asReactionCode } ?: return@listener
+            val reaction = msg.reactions.find { event.reaction.emoji.asReactionCode == it.emoji.asReactionCode } ?: return@listener
             if (board.second <= reaction.count) {
-                star(event.textChannel, u, event.messageIdLong, board.third)
+                star(event.channel as GuildMessageChannel, u, event.messageIdLong, board.third)
             }
         }
     }
@@ -59,7 +59,7 @@ class Starboard(private val bot: Bot) {
         msg.delete()
     }
 
-    suspend fun star(channel: TextChannel, author: User, messageID: Long, boardID: Long) {
+    suspend fun star(channel: GuildMessageChannel, author: User, messageID: Long, boardID: Long) {
         val points = bot.leveling.starboardPoints(bot.leveling.level(author, channel.guild))
 
         val (alreadyStarred, starboardChannelID, name) = bot.database.trnsctn {

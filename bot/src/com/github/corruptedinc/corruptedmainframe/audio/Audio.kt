@@ -24,7 +24,7 @@ import net.dv8tion.jda.api.audio.AudioSendHandler
 import net.dv8tion.jda.api.audio.hooks.ConnectionListener
 import net.dv8tion.jda.api.audio.hooks.ConnectionStatus
 import net.dv8tion.jda.api.entities.User
-import net.dv8tion.jda.api.entities.VoiceChannel
+import net.dv8tion.jda.api.entities.channel.middleman.AudioChannel
 import net.dv8tion.jda.api.events.guild.voice.GuildVoiceMoveEvent
 import org.jetbrains.exposed.dao.exceptions.EntityNotFoundException
 import org.jetbrains.exposed.sql.and
@@ -136,7 +136,7 @@ class Audio(val bot: Bot) {
         }
     }
 
-    fun createState(channel: VoiceChannel, player: AudioPlayerSendHandler, playlist: MutableList<AudioTrack>) =
+    fun createState(channel: AudioChannel, player: AudioPlayerSendHandler, playlist: MutableList<AudioTrack>) =
         AudioState(channel, player, playlist, 0L)
 
     fun gracefulShutdown() {
@@ -167,7 +167,7 @@ class Audio(val bot: Bot) {
             }
 //        private var lastLeftAudio = channel.apply {  }
 
-        constructor(channel: VoiceChannel, player: AudioPlayerSendHandler,
+        constructor(channel: AudioChannel, player: AudioPlayerSendHandler,
                     playlist: MutableList<AudioTrack>, position: Long) {
             playlistCache = playlist.map { it.info.uri }
             this.databaseState = bot.database.audioDB.createMusicState(channel, playlistCache)

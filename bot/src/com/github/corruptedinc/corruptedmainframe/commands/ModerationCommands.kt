@@ -17,6 +17,9 @@ import kotlinx.coroutines.delay
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.MessageEmbed.Field
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
+import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
@@ -66,7 +69,7 @@ fun registerCommands(bot: Bot) {
                         it.id
                     )
                 }
-                event.textChannel.deleteMessages(bulkDeletable).await()
+                event.messageChannel.purgeMessages(bulkDeletable).forEach { it.await() }
                 for (item in messages - bulkDeletable.toSet()) {
                     item.delete().await()
                     delay(maxDeletion.toLong())
@@ -111,37 +114,37 @@ fun registerCommands(bot: Bot) {
         event.replyEmbeds(builder.build()).await()
     }
 
-    bot.commands.register(
-        slash("ban", "Ban a user")
-        .addOption(OptionType.USER, "user", "The user to ban", true)) { event ->
-        bot.commands.assertPermissions(event, Permission.BAN_MEMBERS)
-        val user = event.getOption("user")?.asUser
-            ?: throw CommandException("Failed to find user")
-
-        event.guild?.ban(user, 0)?.await() ?: throw CommandException("Must be run in a server!")
-        event.replyEmbeds(embed("Banned", description = "Banned ${user.asMention}")).ephemeral().await()
-    }
-
-    bot.commands.register(
-        slash("unban", "Unban a user")
-        .addOption(OptionType.USER, "user", "The user to unban", true)) { event ->
-        bot.commands.assertPermissions(event, Permission.BAN_MEMBERS)
-        val user = event.getOption("user")?.asUser ?: throw CommandException("Failed to find user!")
-
-        event.guild?.unban(user)?.await() ?: throw CommandException("Couldn't unban user!")
-        event.replyEmbeds(embed("Unbanned", description = "Unbanned ${user.asMention}")).ephemeral().await()
-    }
-
-    bot.commands.register(
-        slash("kick", "Kick a user")
-        .addOption(OptionType.USER, "user", "The user to kick", true)) { event ->
-        bot.commands.assertPermissions(event, Permission.KICK_MEMBERS)
-        val user = event.getOption("user")?.asUser
-            ?: throw CommandException("Failed to find user")
-
-        event.guild!!.kick(user.id).await()// ?: throw CommandException("Must be run in a server!")
-        event.replyEmbeds(embed("Kicked", description = "Kicked ${user.asMention}", stripPings = false)).ephemeral().await()
-    }
+//    bot.commands.register(
+//        slash("ban", "Ban a user")
+//        .addOption(OptionType.USER, "user", "The user to ban", true)) { event ->
+//        bot.commands.assertPermissions(event, Permission.BAN_MEMBERS)
+//        val user = event.getOption("user")?.asUser
+//            ?: throw CommandException("Failed to find user")
+//
+//        event.guild?.ban(user, 0)?.await() ?: throw CommandException("Must be run in a server!")
+//        event.replyEmbeds(embed("Banned", description = "Banned ${user.asMention}")).ephemeral().await()
+//    }
+//
+//    bot.commands.register(
+//        slash("unban", "Unban a user")
+//        .addOption(OptionType.USER, "user", "The user to unban", true)) { event ->
+//        bot.commands.assertPermissions(event, Permission.BAN_MEMBERS)
+//        val user = event.getOption("user")?.asUser ?: throw CommandException("Failed to find user!")
+//
+//        event.guild?.unban(user)?.await() ?: throw CommandException("Couldn't unban user!")
+//        event.replyEmbeds(embed("Unbanned", description = "Unbanned ${user.asMention}")).ephemeral().await()
+//    }
+//
+//    bot.commands.register(
+//        slash("kick", "Kick a user")
+//        .addOption(OptionType.USER, "user", "The user to kick", true)) { event ->
+//        bot.commands.assertPermissions(event, Permission.KICK_MEMBERS)
+//        val user = event.getOption("user")?.asUser
+//            ?: throw CommandException("Failed to find user")
+//
+//        event.guild!!.kick(user.id).await()// ?: throw CommandException("Must be run in a server!")
+//        event.replyEmbeds(embed("Kicked", description = "Kicked ${user.asMention}", stripPings = false)).ephemeral().await()
+//    }
 
     bot.commands.register(slash("reactionrole", "Manage reaction role messages")
         .addSubcommands(
@@ -198,11 +201,11 @@ fun registerCommands(bot: Bot) {
                 for (reaction in reactionsMap) {
                     if (reaction.key.startsWith(":")) {
                         // sketchy
-                        msg.addReaction(event.guild!!.getEmotesByName(
+                        msg.addReaction(event.guild!!.getEmojisByName(
                             reaction.key.removeSurrounding(":"), false).first()
                         ).await()
                     } else {
-                        msg.addReaction(reaction.key).await()
+                        msg.addReaction(Emoji.fromFormatted(reaction.key)).await()
                     }
                 }
             }
@@ -340,12 +343,12 @@ fun registerCommands(bot: Bot) {
             "add" -> {
                 bot.commands.assertAdmin(event)
                 val name = event.getOption("name")!!.asString.trim()
-                val channel = event.getOption("channel")!!.asTextChannel ?: throw CommandException("Must be a text channel!")
+                val channel = event.getOption("channel")!! as? MessageChannel ?: throw CommandException("Must be a text channel!")
                 val emoteName = event.getOption("emote")!!.asString.trim()
                 val threshold = event.getOption("threshold")!!.asInt
                 val multiplier = event.getOption("multiplier")!!.asDouble
 
-                val emote = event.guild!!.getEmoteById(emoteName.substringAfterLast(':').removeSuffix(">"))?.asMention
+                val emote = event.guild!!.getEmojiById(emoteName.substringAfterLast(':').removeSuffix(">"))?.asMention
                     ?: if (bot.emoji.isValid(emoteName)) emoteName else null
                 emote ?: throw CommandException("Emoji not found!")
                 if (threshold !in 1..1_000_000) throw CommandException("Invalid threshold!")
@@ -375,12 +378,12 @@ fun registerCommands(bot: Bot) {
                     val existing = ExposedDatabase.Starboard.find { (ExposedDatabase.Starboards.name eq oldName) and (ExposedDatabase.Starboards.guild eq g.id) }.firstOrNull() ?: throw CommandException("Starboard '$oldName' not found!")
 
                     val name = event.getOption("new-name")?.asString?.trim() ?: oldName
-                    val channel = event.getOption("channel")?.asTextChannel?.idLong ?: existing.channel
+                    val channel = event.getOption("channel")?.asChannel?.idLong ?: existing.channel
                     val emoteName = event.getOption("emote")?.asString?.trim() ?: existing.emote
                     val threshold = event.getOption("threshold")?.asInt ?: existing.threshold
                     val multiplier = event.getOption("multiplier")?.asDouble ?: existing.xpMultiplier
 
-                    val emote = event.guild!!.getEmoteById(emoteName.substringAfterLast(':').removeSuffix(">"))?.asMention
+                    val emote = event.guild!!.getEmojiById(emoteName.substringAfterLast(':').removeSuffix(">"))?.asMention
                         ?: if (bot.emoji.isValid(emoteName)) emoteName else null
                     emote ?: throw CommandException("Emote not found!")
                     if (threshold !in 1..1_000_000) throw CommandException("Invalid threshold!")
@@ -409,7 +412,7 @@ fun registerCommands(bot: Bot) {
     ) { event ->
         val title = event.getOption("title")!!.asString
         val content = event.getOption("content")!!.asString
-        val channel = event.getOption("channel")!!.asMessageChannel
+        val channel = event.getOption("channel")!!.asChannel as? TextChannel
 
         bot.commands.assertAdmin(event)
 

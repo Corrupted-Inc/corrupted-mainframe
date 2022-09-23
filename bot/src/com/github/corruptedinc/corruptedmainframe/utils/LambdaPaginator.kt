@@ -1,14 +1,13 @@
 package com.github.corruptedinc.corruptedmainframe.utils
 
 import net.dv8tion.jda.api.JDA
-import net.dv8tion.jda.api.entities.Emoji
 import net.dv8tion.jda.api.entities.MessageEmbed
-import net.dv8tion.jda.api.entities.TextChannel
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
+import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.GenericEvent
 import net.dv8tion.jda.api.exceptions.ErrorHandler
 import net.dv8tion.jda.api.hooks.EventListener
 import net.dv8tion.jda.api.hooks.SubscribeEvent
-import net.dv8tion.jda.api.interactions.Interaction
 import net.dv8tion.jda.api.interactions.commands.SlashCommandInteraction
 import net.dv8tion.jda.api.interactions.components.ActionRow
 import net.dv8tion.jda.api.interactions.components.buttons.Button
@@ -40,8 +39,8 @@ class LambdaPaginator internal constructor(private val nonce: String, private va
     var next: Button = DEFAULT_NEXT
     var delete: Button = DEFAULT_DELETE
 
-    internal val controls: ActionRow
-        get() = ActionRow.of(
+    internal val controls
+        get() = listOf(
         prev.withDisabled(index == 0L).withId("$nonce:prev"),
         next.withDisabled(index == size - 1).withId("$nonce:next"),
         delete.withId("$nonce:delete")
@@ -61,7 +60,7 @@ class LambdaPaginator internal constructor(private val nonce: String, private va
                 index = index.coerceIn(0 until size)
                 val p = page(index)
                 event.editMessageEmbeds(p)
-                    .setActionRows(controls)
+                    .setActionRow(controls)
                     .queue(
                         null,
                         ErrorHandler().handle(ErrorResponse.UNKNOWN_MESSAGE) { unregister((event as GenericEvent).jda) }
@@ -72,7 +71,7 @@ class LambdaPaginator internal constructor(private val nonce: String, private va
                 index = index.coerceIn(0 until size)
                 val p = page(index)
                 event.editMessageEmbeds(p)
-                    .setActionRows(controls)
+                    .setActionRow(controls)
                     .queue(
                         null,
                         ErrorHandler().handle(ErrorResponse.UNKNOWN_MESSAGE) { unregister((event as GenericEvent).jda) }
@@ -103,12 +102,12 @@ internal fun paginator(size: Long, lambda: (Long) -> MessageEmbed, jda: JDA): La
     return LambdaPaginator(Base64.encodeBase64String(nonce), TimeUnit.MINUTES.toMillis(15), lambda, size).register(jda)
 }
 
-fun TextChannel.lambdaPaginator(size: Long, lambda: (Long) -> MessageEmbed) {
+fun MessageChannel.lambdaPaginator(size: Long, lambda: (Long) -> MessageEmbed) {
     val paginator = paginator(size, lambda, jda)
-    sendMessageEmbeds(lambda(0)).setActionRow(paginator.controls.components).complete()
+    sendMessageEmbeds(lambda(0)).setActionRow(paginator.controls).complete()
 }
 
 fun SlashCommandInteraction.replyLambdaPaginator(size: Long, lambda: (Long) -> MessageEmbed) {
     val paginator = paginator(size, lambda, jda)
-    replyEmbeds(lambda(0)).addActionRows(listOf(paginator.controls)).complete()
+    replyEmbeds(lambda(0)).setActionRow(paginator.controls).complete()
 }
