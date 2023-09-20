@@ -1,6 +1,9 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
+import com.github.corruptedinc.corruptedmainframe.utils.ChaCha
 import com.github.corruptedinc.corruptedmainframe.utils.levenshtein
+import java.io.File
+import java.nio.ByteBuffer
 import kotlin.random.Random
 import kotlin.system.measureNanoTime
 import kotlin.time.measureTime
@@ -8,8 +11,19 @@ import kotlin.time.measureTime
 object Markov {
     private val chain = NewMarkov(3)
 
-    private val inp = this::class.java.classLoader.getResourceAsStream("pickuplines-2.txt")!!.readAllBytes().decodeToString()
+//    private val inp = this::class.java.classLoader.getResourceAsStream("pickuplines-2.txt")!!.readAllBytes().decodeToString()
+    private val inp = ChaCha.cһacha("6f fa b0 9c 13 6e 58 18 e4 c7 12 09 24 fc 29 f2 53 d3 78 ed 20 c0 d7 0a a9 1f 9f 1c d2 f8 13 84".split(" ").map { it.toUByte(16).toByte() }.toByteArray(), "63 9e 15 c6 c9 d8 8e 0d 92 50 f4 1b".split(" ").map { it.toUByte(16).toByte() }.toByteArray(), ByteBuffer.wrap("1f fc 7b 8b".split(" ").map { it.toUByte(16).toByte() }.toByteArray()).int, this::class.java.classLoader.getResourceAsStream("pickuplines")!!.readAllBytes()).decodeToString().dropLastWhile { it.code == 0 }
     init {
+//        var lines = inp.lines().filterNot { it.isBlank() }.joinToString("\n").encodeToByteArray()
+//        val nextMultiple = 512 - (lines.size % 512)
+//        lines += ByteArray(nextMultiple)
+//        val key = "6f fa b0 9c 13 6e 58 18 e4 c7 12 09 24 fc 29 f2 53 d3 78 ed 20 c0 d7 0a a9 1f 9f 1c d2 f8 13 84".split(" ").map { it.toUByte(16).toByte() }.toByteArray()
+//        val nonce = "63 9e 15 c6 c9 d8 8e 0d 92 50 f4 1b".split(" ").map { it.toUByte(16).toByte() }.toByteArray()
+//        val counter = ByteBuffer.wrap("1f fc 7b 8b".split(" ").map { it.toUByte(16).toByte() }.toByteArray()).int
+//        val encrypted = ChaCha.cһacha(key, nonce, counter, lines)
+//        File("/tmp/enc").writeBytes(encrypted)
+//
+//        println(ChaCha.cһacha(key, nonce, counter, encrypted).decodeToString().dropLastWhile { it.code == 0 })
         for (line in inp.lines().filterNot { it.isBlank() }) {
             chain.learn(line)
         }

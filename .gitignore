@@ -12,3 +12,4 @@ image/plugins/*
 image/config.json
 image?*/
 */build/
+**/*pickuplines*.txt
