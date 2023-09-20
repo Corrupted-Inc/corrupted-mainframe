@@ -5,8 +5,8 @@ import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.github.corruptedinc.corruptedmainframe.utils.*
-import dev.minn.jda.ktx.await
-import dev.minn.jda.ktx.listener
+import dev.minn.jda.ktx.coroutines.await
+import dev.minn.jda.ktx.events.listener
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.*

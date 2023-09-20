@@ -48,7 +48,7 @@ class PluginLoader(private val pluginDir: File, private val bot: Bot) {
             @Suppress("TooGenericExceptionCaught")
             try {
                 p.first.load(bot)
-                p.first.registerCommands(bot.commands::register)
+                p.first.registerCommands(bot.commands::registerCompatible)
             } catch (e: Exception) {
                 bot.log.error("Exception while loading plugin '${p.second.name}':\n${e.stackTraceToString()}")
                 continue

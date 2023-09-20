@@ -9,7 +9,6 @@ import java.time.Duration
 import java.util.*
 import kotlin.math.min
 
-
 fun Duration.toHumanReadable(): String {
     return toString().removePrefix("PT")
         .replace("(\\d[HMS])(?!$)".toRegex(), "$1 ").lowercase(Locale.getDefault())
@@ -105,3 +104,5 @@ fun ReplyCallbackAction.ephemeral() = setEphemeral(true)
 typealias CmdCtx = CommandContext
 
 typealias AtcmpCtx = AutocompleteContext
+
+fun String.strp() = dropWhile { it.isWhitespace() }.dropLastWhile { it.isWhitespace() }

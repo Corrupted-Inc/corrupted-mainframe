@@ -41,7 +41,7 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
         val parsed = symbols.map { cmd ->
             val parent = cmd.parent as? KSClassDeclaration
             val parentAnnotation = parent?.findAnnotation<ParentCommand>()
-            val p = parentAnnotation?.let { ParsedParentCommand(it.name.ifBlank { parent.simpleName.getShortName() }, it.description) }
+            val p = parentAnnotation?.let { ParsedParentCommand(it.name.ifBlank { parent.simpleName.getShortName() }, it.description, it.global) }
             parseSingle(cmd as KSFunctionDeclaration, p)
         }.toList()
 
@@ -58,7 +58,7 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
 
         for (parent in asTree) {
             val k = parent.key ?: continue
-            dataBuilder.add("slash(%S, %S)", k.name, k.description)
+            dataBuilder.add("Cmd(slash(%S, %S)", k.name, k.description)
             dataBuilder.add(".addSubcommands(")
             for (child in parent.value) {
                 dataBuilder.add("SubcommandData(%S, %S)", child.name, child.description)
@@ -67,21 +67,21 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
                 }
                 dataBuilder.add(",")
             }
-            dataBuilder.add("),")
+            dataBuilder.add("), ${k.global}),")
         }
         for (command in asTree[null].orEmpty()) {
-            dataBuilder.add("slash(%S, %S)", command.name, command.description)
+            dataBuilder.add("Cmd(slash(%S, %S)", command.name, command.description)
             for (param in command.params) {
                 dataBuilder.add(".addOption(OptionType.%L, %S, %S, %L, %L)", param.type.name, param.name, param.description, !param.optional, param.autocomplete != null)
             }
-            dataBuilder.add(",")
+            dataBuilder.add(", ${command.global}),")
         }
 
         dataBuilder.add(")")
 
         type.addFunction(
             FunSpec.builder("commandData")
-                .returns(List::class.asTypeName().parameterizedBy(CommandData::class.asTypeName()))
+                .returns(List::class.asTypeName().parameterizedBy(ClassName.bestGuess("com.github.corruptedinc.corruptedmainframe.commands.Commands.Cmd")))
                 .addCode(dataBuilder.build())
                 .build()
         )
@@ -104,28 +104,18 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
             val garbage = rng.nextULong().toString()
             mainListenerBlock.add("%S -> %L(", path, command.func.simpleName.asString() + garbage)
             for (param in command.params) {
-                mainListenerBlock.add("event.getOption(%S)%L.%L%L", param.name, if (param.optional) "?" else "!!", when (param.type) {
-                    OptionType.STRING -> "asString"
-                    OptionType.INTEGER -> if (param.functionParam.type.qName() == "kotlin.Int") "asInt" else "asLong"
-                    OptionType.BOOLEAN -> "asBoolean"
-                    OptionType.USER -> "asUser"
-                    OptionType.CHANNEL -> when (param.functionParam.type.qName().substringAfterLast('.')) {
-                        "GuildChannel" -> "asGuildChannel"
-                        "AudioChannel" -> "asAudioChannel"
-                        "MessageChannel" -> "asMessgeChannel"
-                        "NewsChannel" -> "asNewsChannel"
-                        "StageChannel" -> "asStageChannel"
-                        "TextChannel" -> "asTextChannel"
-                        "ThreadChannel" -> "asThreadChannel"
-                        "VoiceChannel" -> "asVoiceChannel"
-                        else -> throw IllegalArgumentException()
-                    }
-                    OptionType.ROLE -> "asRole"
-                    OptionType.MENTIONABLE -> "asMentionable"
-                    OptionType.NUMBER -> "asDouble"
-                    OptionType.ATTACHMENT -> "asAttachment"
+                mainListenerBlock.add("event.getOption(%S)%L%L%L", param.name, if (param.optional) "?" else "!!", when (param.type) {
+                    OptionType.STRING -> ".asString"
+                    OptionType.INTEGER -> if (param.functionParam.type.qName() == "kotlin.Int") ".asInt" else ".asLong"
+                    OptionType.BOOLEAN -> ".asBoolean"
+                    OptionType.USER -> ".asUser"
+                    OptionType.CHANNEL -> ".asChannel as? " + param.functionParam.type.qName()
+                    OptionType.ROLE -> ".asRole"
+                    OptionType.MENTIONABLE -> ".asMentionable"
+                    OptionType.NUMBER -> ".asDouble"
+                    OptionType.ATTACHMENT -> ".asAttachment"
                     else -> throw IllegalArgumentException()
-                }, if (param.optional) "" else "!!")
+                }, if (param.optional) "" else " ?: throw CommandException(\"\")")
                 mainListenerBlock.add(",")
             }
             mainListenerBlock.add(")")
@@ -204,12 +194,13 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
             .import(OptionType::class)
             .addImport(Commands::class, "slash")
             .addImport("com.github.corruptedinc.corruptedmainframe.utils", "CommandContext", "CmdCtx", "AtcmpCtx")
-            .addImport("dev.minn.jda.ktx", "listener")
+            .addImport("dev.minn.jda.ktx.events", "listener")
             .addImport("com.github.corruptedinc.corruptedmainframe.commands", "CommandException")
             .addImport("com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion", "embed", "ERROR_COLOR")
-            .addImport("dev.minn.jda.ktx", "await")
+            .addImport("dev.minn.jda.ktx.coroutines", "await")
             .addImport("com.github.corruptedinc.corruptedmainframe.utils", "ephemeral")
             .addImport("com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion", "m")
+            .addImport("com.github.corruptedinc.corruptedmainframe.commands.Commands", "Cmd")
             .import(SlashCommandInteractionEvent::class)
             .import(CommandAutoCompleteInteractionEvent::class)
             .import(Instant::class)
@@ -270,7 +261,7 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
             IMentionable::class.qualifiedName -> OptionType.MENTIONABLE
             Double::class.qualifiedName -> OptionType.NUMBER
             Attachment::class.qualifiedName -> OptionType.ATTACHMENT  // TODO: ByteArray jank?
-            else -> if ((t.declaration as KSClassDeclaration).getAllSuperTypes().any { it.declaration.qualifiedName!!.asString() == Channel::class.qualifiedName } || tName == Channel::class.qualifiedName) OptionType.CHANNEL else throw IllegalArgumentException(param.name!!.asString())
+            else -> if ((t.declaration as KSClassDeclaration).getAllSuperTypes().any { it.declaration.qualifiedName!!.asString() == "net.dv8tion.jda.api.entities.channel.Channel" } || tName == "net.dv8tion.jda.api.entities.channel.Channel") OptionType.CHANNEL else throw IllegalArgumentException(param.name!!.asString())
         }
 
         val optional = param.hasDefault || t.isMarkedNullable
@@ -286,12 +277,12 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
         val name = annotation.name.ifBlank { func.simpleName.getShortName() }
         val path = (if (parent != null) "${parent.name}/" else "") + name
         val params = func.parameters.map { parseParameter(func, it, path) }
-        return ParsedSingleCommand(name, annotation.description, params, func, parent)
+        return ParsedSingleCommand(name, annotation.description, params, func, parent, parent?.global ?: annotation.global)
     }
 
-    data class ParsedParentCommand(val name: String, val description: String)
+    data class ParsedParentCommand(val name: String, val description: String, val global: Boolean)
 
-    data class ParsedSingleCommand(val name: String, val description: String, val params: List<ParsedParam>, val func: KSFunctionDeclaration, val parent: ParsedParentCommand?)
+    data class ParsedSingleCommand(val name: String, val description: String, val params: List<ParsedParam>, val func: KSFunctionDeclaration, val parent: ParsedParentCommand?, val global: Boolean)
 
     data class ParsedParam(val name: String, val description: String, val functionParam: KSValueParameter, val type: OptionType, val optional: Boolean, val autocomplete: ParsedAutocomplete?)
 

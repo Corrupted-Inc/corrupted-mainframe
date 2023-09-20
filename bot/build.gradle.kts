@@ -1,7 +1,7 @@
 plugins {
     id("kotlin")
 //    id("io.gitlab.arturbosch.detekt").version("1.18.0")
-    id("com.google.devtools.ksp") version "1.7.0-1.0.6"
+    id("com.google.devtools.ksp") version "1.7.10-1.0.6"
 }
 
 sourceSets.main {
@@ -17,33 +17,34 @@ repositories {
 
 dependencies {
     testImplementation(kotlin("test-junit5"))
-    testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.0")
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.9.0")
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.9.2")
     implementation("net.dv8tion:JDA:5.0.0-alpha.20")
-    implementation("com.github.minndevelopment:jda-ktx:0.8.4-alpha.5")
-    implementation(group = "org.postgresql", name = "postgresql", version = "42.2.26")
+    implementation("com.github.minndevelopment:jda-ktx:0.9.5-alpha.19")
+    implementation(group = "org.postgresql", name = "postgresql", version = "42.2.27")
     implementation(group = "org.slf4j", name = "slf4j-simple", version = "1.7.30")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.6.4")
     implementation(group = "org.jetbrains.exposed", name = "exposed-dao", version = "0.39.2")
     implementation(group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "0.39.2")
     implementation(group = "org.jetbrains.exposed", name = "exposed-java-time", version = "0.39.2")
-    implementation("com.github.walkyst:lavaplayer-fork:1.3.98.4")
+//    implementation("com.github.walkyst:lavaplayer-fork:1.3.98.4")
+    implementation("dev.arbjerg:lavaplayer:2.0.1")
 //    runtimeOnly("com.sedmelluq:lavaplayer-common:1.0.6")
-    implementation("ch.obermuhlner:big-math:2.3.0")
-    implementation("com.github.ben-manes.caffeine:caffeine:3.1.1")
+    implementation("ch.obermuhlner:big-math:2.3.2")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.1.5")
     implementation(project(":annotations"))
     compileOnly(project(":annotationprocessor"))
     ksp(project(":annotationprocessor"))
 
     // figure out how to replace/remove if possible
-    implementation("org.ocpsoft.prettytime:prettytime-nlp:5.0.4.Final")
+    implementation("org.ocpsoft.prettytime:prettytime-nlp:5.0.7.Final")
 //    implementation("com.jagrosh:jda-utilities:3.0.5")
 
     // to remove
     implementation("ch.obermuhlner:kotlin-big-math:2.3.0")
-    implementation("com.google.guava:guava:31.1-jre")
-    implementation("dev.brachtendorf:JImageHash:1.0.0")
-    implementation(group = "org.xerial", name = "sqlite-jdbc", version = "3.34.0")
+//    implementation("com.google.guava:guava:31.1-jre")
+//    implementation("dev.brachtendorf:JImageHash:1.0.0")
+//    implementation(group = "org.xerial", name = "sqlite-jdbc", version = "3.34.0")
     implementation(group = "com.beust", name = "klaxon", version = "5.5")
 }
 

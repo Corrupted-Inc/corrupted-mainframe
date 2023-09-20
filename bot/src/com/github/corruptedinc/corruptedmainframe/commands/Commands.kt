@@ -5,10 +5,9 @@ import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Compan
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.github.corruptedinc.corruptedmainframe.gen.GeneratedCommands
 import com.github.corruptedinc.corruptedmainframe.utils.*
-import dev.minn.jda.ktx.CoroutineEventListener
-import dev.minn.jda.ktx.await
-import dev.minn.jda.ktx.interactions.replyPaginator
-import dev.minn.jda.ktx.listener
+import dev.minn.jda.ktx.coroutines.await
+import dev.minn.jda.ktx.events.CoroutineEventListener
+import dev.minn.jda.ktx.events.listener
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.EmbedBuilder
@@ -74,9 +73,6 @@ class Commands(val bot: Bot) {
         const val MAX_CALCULATOR_PRECISION = 1024
         const val DEF_CALCULATOR_PRECISION = 100
 
-        private const val SLOTS_HEIGHT = 3
-        private const val SLOTS_WIDTH = 6
-
         const val BUTTON_TIMEOUT = 120_000L
 
         val ERROR_COLOR = Color(235, 70, 70)
@@ -92,7 +88,9 @@ class Commands(val bot: Bot) {
                     "&permissions=271830080&scope=applications.commands%20bot"
     }
 
-    internal val newCommands = mutableListOf<CommandData>()
+    data class Cmd(val data: CommandData, val global: Boolean)
+
+    val newCommands = mutableListOf<Cmd>()
     private val listeners = mutableListOf<CoroutineEventListener>()
 
     // I'm not sure why, but it won't compile if I remove the suspend modifier, despite this warning
@@ -140,22 +138,26 @@ class Commands(val bot: Bot) {
 
     // TODO custom listener pool that handles exceptions
     // TODO cleaner way than upserting the command every time
-    fun register(data: CommandData, lambda: suspend (SlashCommandInteraction) -> Unit) {
-        newCommands.add(data)
+    fun register(data: CommandData, global: Boolean = false, lambda: suspend (SlashCommandInteraction) -> Unit) {
+        newCommands.add(Cmd(data, global))
         listeners.add(bot.jda.listener<SlashCommandInteractionEvent> {
             handle(data, it, lambda)
         })
     }
 
+    fun registerCompatible(data: CommandData, lambda: suspend (SlashCommandInteraction) -> Unit) {
+        register(data, global = false, lambda = lambda)
+    }
+
     fun registerUser(data: CommandData, lambda: suspend (UserContextInteraction) -> Unit) {
-        newCommands.add(data)
+        newCommands.add(Cmd(data, false))
         listeners.add(bot.jda.listener<UserContextInteractionEvent> {
             handle(data, it, lambda)
         })
     }
 
     fun registerMessage(data: CommandData, lambda: suspend (MessageContextInteraction) -> Unit) {
-        newCommands.add(data)
+        newCommands.add(Cmd(data, false))
         listeners.add(bot.jda.listener<MessageContextInteractionEvent> {
             handle(data, it, lambda)
         })
@@ -175,10 +177,20 @@ class Commands(val bot: Bot) {
     suspend fun finalizeCommands() {
         newCommands.addAll(GeneratedCommands.commandData().apply { println("Loaded $size commands from annotation processor") })
         bot.log.info("Registering ${newCommands.size} commands...")
+        val existing = bot.jda.retrieveCommands().await().map { CommandData.fromCommand(it) to it.idLong }.toSet()
+        val new = newCommands.filter { it.global }.map { it.data to 0L }.toSet()
+        val added = new - existing
+        val removed = existing - new
+        for (cmd in removed) {
+            bot.jda.deleteCommandById(cmd.second).await()
+        }
+        for (cmd in added) {
+            bot.jda.upsertCommand(cmd.first).await()
+        }
         bot.jda.guilds.map {
             bot.scope.launch {
                 try {
-                    it.updateCommands().addCommands(newCommands).await()
+                    it.updateCommands().addCommands(newCommands.filter { !it.global }.map { it.data }).await()
                 } catch (e: ErrorResponseException) {
                     bot.log.error("Failed to register commands in ${it.name}")
                 }
@@ -187,7 +199,7 @@ class Commands(val bot: Bot) {
         bot.log.info("Done")
 
         bot.jda.listener<GuildJoinEvent> { event ->
-            event.guild.updateCommands().addCommands(newCommands).await()
+            event.guild.updateCommands().addCommands(newCommands.filter { !it.global }.map { it.data }).await()
         }
 
         GeneratedCommands.registerListeners(bot)
@@ -215,79 +227,12 @@ class Commands(val bot: Bot) {
             )).await()
         }
 
-        register(slash("slots", "Play the slots")) { event ->
-            val emotes = ":cherries:, :lemon:, :seven:, :broccoli:, :peach:, :green_apple:".split(", ")
-
-//                val numberCorrect = /*weightedRandom(
-//                    listOf(1,     2,     3,     4,     5,      6),
-//                    listOf(0.6,   0.2,   0.15,  0.03,  0.0199, 0.000001)
-//                )*/ Random.nextInt(1, 6)
-
-            fun section(count: Int, index: Int): List<String> {
-                return emotes.plus(emotes).slice(index..(index + emotes.size)).take(count)
-            }
-
-            val indexes = MutableList(SLOTS_WIDTH) { Random.nextInt(0, emotes.size) }
-//                for (i in 0 until numberCorrect) {
-//                    indexes.add(indexes[0])
-//                }
-//                for (i in 0 until emotes.size - numberCorrect) {
-//                    indexes.add(Random.nextInt(emotes.size))
-//                }
-            indexes.shuffle()
-            val wheels = indexes.map { section(SLOTS_HEIGHT, it) }
-                val out = (0 until SLOTS_HEIGHT).joinToString("\n") { n ->
-                    wheels.joinToString("   ") { it[n] }
-                }
-            event.replyEmbeds(embed("${event.user.name} is playing...", description = out)).await()
-        }
-
-        register(slash("sql", "not for you")
-            .addOption(OptionType.STRING, "sql", "bad", true)
-            .addOption(OptionType.BOOLEAN, "commit", "keep changes?", false)
-        ) { event ->
-            // do not touch this
-            val isAdmin = bot.config.permaAdmins.contains(event.user.id)
-            if (!isAdmin) {
-                event.reply("no").await()
-                return@register
-            }
-
-            val sql = event.getOption("sql")!!.asString
-            val rollback = event.getOption("commit")?.asBoolean != true
-
-            val rows = bot.database.trnsctn {
-                exec(sql) { result ->
-                    val output = mutableListOf<Row>()
-                    val r = mutableListOf<String>()
-                    while (result.next()) {
-                        for (c in 1..result.metaData.columnCount) {
-                            r.add(result.getObject(c)?.toString() ?: "null")
-                        }
-                        output.add(Row(*r.toTypedArray()))
-                        r.clear()
-                    }
-                    if (rollback) {
-                        rollback()
-                    }
-                    output
-                }
-            }!!
-            val table = table(rows.toTypedArray()).chunked(1900)
-            @Suppress("MagicNumber")
-            val pages = table.chunked(1900)
-                .map { embed("a", description = "```\n$it```") }
-
-            @Suppress("SpreadOperator")
-            event.replyPaginator(pages = pages.toTypedArray(), Duration.of(BUTTON_TIMEOUT, ChronoUnit.MILLIS)
-                .toKotlinDuration()).ephemeral().await()
-        }
-
         registerAudioCommands(bot, this)
         registerCommands(bot)
-        registerBotCommands(bot)
         registerUtilityCommands(bot)
-        bot.fights.registerCommands()
+        bot.apply {
+            bot.fights.registerCommands()
+        }
         bot.leveling.registerCommands()
 
         bot.onReady {

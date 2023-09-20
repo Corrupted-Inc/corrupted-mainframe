@@ -6,7 +6,7 @@ import com.github.corruptedinc.corruptedmainframe.commands.Leveling
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
-import dev.minn.jda.ktx.await
+import dev.minn.jda.ktx.coroutines.await
 import kotlinx.coroutines.delay
 import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.MessageEmbed
@@ -19,7 +19,7 @@ import kotlin.math.*
 import kotlin.random.Random
 import kotlin.random.Random.Default.nextDouble
 
-class Fights(private val bot: Bot) {
+class Fights {
     private val r = SecureRandom()
     sealed interface FightEvent {
         val initiatorHP: Double
@@ -51,14 +51,16 @@ class Fights(private val bot: Bot) {
                 var winner: User? = null
 
                 for (i in 0..5) {
-                    val aAttack = Attack.pickAttack(initiator.level, rand, categories.toList())
-                    val aDamage = aAttack.damage(rand, initiator.level)
-                    victim.hp -= aDamage
-                    victim.hp = victim.hp.coerceAtLeast(0.0)
-                    e.add(FightEvent.AttackEvent(initiator, victim, aAttack, aDamage, initiator.hp, victim.hp))
-                    if (victim.hp <= 0) {
-                        winner = initiator
-                        break
+                    if (i == 0 && rand.nextDouble() < 0.25) {} else {
+                        val aAttack = Attack.pickAttack(initiator.level, rand, categories.toList())
+                        val aDamage = aAttack.damage(rand, initiator.level)
+                        victim.hp -= aDamage
+                        victim.hp = victim.hp.coerceAtLeast(0.0)
+                        e.add(FightEvent.AttackEvent(initiator, victim, aAttack, aDamage, initiator.hp, victim.hp))
+                        if (victim.hp <= 0) {
+                            winner = initiator
+                            break
+                        }
                     }
 
                     val bAttack = Attack.pickAttack(victim.level, rand, categories.toList())
@@ -103,12 +105,30 @@ class Fights(private val bot: Bot) {
             val levelMultiplier = if (levelFraction >= 1) log10(levelFraction) + 1 else levelFraction.pow(10)
             return pts * levelMultiplier
         }
+
+        @JvmStatic
+        fun main(args: Array<String>) {
+            Fights().blah()
+        }
     }
 
+    fun blah() {
+        for (level in 0..100) {
+            val userA = User(123, level, false, 0.0)
+            val userB = User(456, level, false, 0.0)
+            var sum = 0
+            repeat(500) {
+                sum += Fight(userA, userB, Random.nextLong(), Attack.Category.GENERAL, Attack.Category.TECHNICAL, Attack.Category.FRC).events.size - 1
+            }
+            println("$level, ${sum / 500.0}")
+        }
+    }
+
+    context(Bot)
     suspend fun sendFight(event: CommandInteraction, initiator: net.dv8tion.jda.api.entities.User, victim: net.dv8tion.jda.api.entities.User, guild: Guild, seed: Long) {
-        val initiatorU = User(initiator.idLong, bot.leveling.level(initiator, guild).toInt(), initiator.isBot, 0.0)
-        val victimU = User(victim.idLong, bot.leveling.level(victim, guild).toInt(), victim.isBot, 0.0)
-        val fight = bot.database.trnsctn {
+        val initiatorU = User(initiator.idLong, leveling.level(initiator, guild).toInt(), initiator.isBot, 0.0)
+        val victimU = User(victim.idLong, leveling.level(victim, guild).toInt(), victim.isBot, 0.0)
+        val fight = database.trnsctn {
             Fight(initiatorU, victimU, seed, *guild.m.fightCategoryList.toList().toTypedArray())
         }
 
@@ -143,15 +163,27 @@ class Fights(private val bot: Bot) {
             fight.initiator.hp = item.initiatorHP
             fight.victim.hp = item.victimHP
 
-            bot.jda.getTextChannelById(channelID)!!.editMessageEmbedsById(id, generateEmbed()).await()
+            jda.getTextChannelById(channelID)!!.editMessageEmbedsById(id, generateEmbed()).await()
         }
 
-        bot.leveling.addPoints(bot.jda.getUserById(attackerID)!!, attackerXPGain, bot.jda.getTextChannelById(channelID)!!)
-        bot.leveling.addPoints(bot.jda.getUserById(victimID)!!, victimXPGain, bot.jda.getTextChannelById(channelID)!!)
+        var b1 = false
+        var b2 = false
+        database.trnsctn {
+            b1 = pts(initiator.m, event.guild!!.m).shadowbanned
+            b2 = pts(victim.m, event.guild!!.m).shadowbanned
+        }
+
+        if (!b1) {
+            leveling.addPoints(jda.getUserById(attackerID)!!, attackerXPGain, jda.getTextChannelById(channelID)!!)
+        }
+        if (!b2) {
+            leveling.addPoints(jda.getUserById(victimID)!!, victimXPGain, jda.getTextChannelById(channelID)!!)
+        }
     }
 
+    context(Bot)
     fun registerCommands() {
-        bot.commands.register(
+        commands.register(
             net.dv8tion.jda.api.interactions.commands.build.Commands.slash("fight", "Fight another user")
             .addOption(OptionType.USER, "user", "The user to fight", true)) { event ->
             val user = event.getOption("user")!!.asMember ?: throw CommandException("You can't fight someone in a different server!")
@@ -163,7 +195,7 @@ class Fights(private val bot: Bot) {
 //            if (bot.leveling.level(attacker.user, guild) > bot.leveling.level(user.user, guild) + 5.0 && user.idLong != bot.jda.selfUser.idLong)
 //                throw CommandException("Can't fight someone more than 5 levels lower than you!")
 
-            bot.database.trnsctn {
+            database.trnsctn {
                 val u = attacker.user.m
                 val g = guild.m
                 val pts =
@@ -172,13 +204,13 @@ class Fights(private val bot: Bot) {
                 val cooldown = pts.fightCooldown.plus(g.fightCooldown)
                 val now = Instant.now()
                 if (cooldown.isAfter(now)) {
-                    throw CommandException("Can't fight again until <t:${cooldown.epochSecond}>!")
+                    throw CommandException("Can't fight again until <t:${cooldown.epochSecond}> (<t:${cooldown.epochSecond}:R>)!")
                 }
 
                 pts.fightCooldown = now
             }
             val seed = r.nextLong()
-            bot.fights.sendFight(event, attacker.user, user.user, guild, seed)
+            this.run { fights.sendFight(event, attacker.user, user.user, guild, seed) }
         }
     }
 }

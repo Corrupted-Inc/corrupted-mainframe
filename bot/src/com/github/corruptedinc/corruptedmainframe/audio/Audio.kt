@@ -1,22 +1,20 @@
 package com.github.corruptedinc.corruptedmainframe.audio
 
+import com.github.benmanes.caffeine.cache.Caffeine
+import com.github.benmanes.caffeine.cache.LoadingCache
 import com.github.corruptedinc.corruptedmainframe.core.db.AudioDB
 import com.github.corruptedinc.corruptedmainframe.core.db.AudioDB.PlaylistEntries
-import com.google.common.cache.Cache
-import com.google.common.cache.CacheBuilder
-import com.google.common.cache.CacheLoader
+import com.github.corruptedinc.corruptedmainframe.discord.Bot
+import com.github.corruptedinc.corruptedmainframe.utils.onReady
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager
 import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException
-import com.sedmelluq.discord.lavaplayer.track.playback.AudioFrame
-import com.github.corruptedinc.corruptedmainframe.discord.Bot
-import com.github.corruptedinc.corruptedmainframe.utils.onReady
-import com.google.common.cache.LoadingCache
 import com.sedmelluq.discord.lavaplayer.track.*
-import dev.minn.jda.ktx.listener
+import com.sedmelluq.discord.lavaplayer.track.playback.AudioFrame
+import dev.minn.jda.ktx.events.listener
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -66,20 +64,26 @@ class Audio(val bot: Bot) {
         }
     }
 
-    private val cache: Cache<String, List<AudioTrack>> = CacheBuilder.newBuilder().maximumSize(MAX_CACHE_SIZE)
-        .expireAfterWrite(CACHE_RET_MINUTES, TimeUnit.MINUTES).build(object : CacheLoader<String, List<AudioTrack>>() {
-        override fun load(key: String): List<AudioTrack> {
-            return runBlocking { load(key, nocache = true) }
-        }
-    })
-
-    private val metadataCache: LoadingCache<String, AudioTrackInfo> = CacheBuilder.newBuilder()
-        .maximumSize(MAX_METADATA_CACHE_SIZE).expireAfterWrite(METADATA_CACHE_RET_MINUTES, TimeUnit.MINUTES)
-        .build(object : CacheLoader<String, AudioTrackInfo>() {
-            override fun load(key: String): AudioTrackInfo {
-                return runBlocking { load(key, search = false) }.first().info
+    private val cache: LoadingCache<String, List<AudioTrack>> = Caffeine.newBuilder().maximumSize(MAX_CACHE_SIZE)
+        .expireAfterWrite(CACHE_RET_MINUTES, TimeUnit.MINUTES).build { key ->
+            runBlocking {
+                load(
+                    key,
+                    nocache = true
+                )
             }
-        })  // TODO switch to loadingcache and remove janky double putting
+        }
+
+    private val metadataCache: LoadingCache<String, AudioTrackInfo> = Caffeine.newBuilder()
+        .maximumSize(MAX_METADATA_CACHE_SIZE).expireAfterWrite(METADATA_CACHE_RET_MINUTES, TimeUnit.MINUTES)
+        .build { key ->
+            runBlocking {
+                load(
+                    key,
+                    search = false
+                )
+            }.first().info
+        }  // TODO remove janky double putting
 
     fun metadata(source: String?): AudioTrackInfo? = if (source == null) null else metadataCache[source]
 

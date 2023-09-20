@@ -1,17 +1,14 @@
 package com.github.corruptedinc.corruptedmainframe.utils
 
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
-import dev.minn.jda.ktx.listener
+import dev.minn.jda.ktx.events.listener
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.Member
 import net.dv8tion.jda.api.events.ReadyEvent
-import net.dv8tion.jda.api.interactions.Interaction
 
 val Member?.admin get() = this?.permissions?.contains(Permission.ADMINISTRATOR) == true
-
-fun Int.bold() = toString().map { "\uD835" + (0xdfce + it.digitToInt()).toChar() }.joinToString("")
 
 //fun main() {
 //    println("\uD835\uDFCE")

@@ -8,9 +8,9 @@ import com.github.corruptedinc.corruptedmainframe.utils.Row
 import com.github.corruptedinc.corruptedmainframe.utils.biasedLevenshteinInsensitive
 import com.github.corruptedinc.corruptedmainframe.utils.ephemeral
 import com.github.corruptedinc.corruptedmainframe.utils.table
-import dev.minn.jda.ktx.Message
-import dev.minn.jda.ktx.await
-import dev.minn.jda.ktx.interactions.replyPaginator
+import dev.minn.jda.ktx.coroutines.await
+import dev.minn.jda.ktx.interactions.components.replyPaginator
+import dev.minn.jda.ktx.messages.MessageEditBuilder
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.interactions.commands.Command
@@ -86,7 +86,7 @@ fun registerUtilityCommands(bot: Bot) {
                         )
                     )
                     hook.editOriginal(
-                        MessageEditData.fromMessage(Message("```\n" + table(
+                        MessageEditBuilder("```\n" + table(
                         arrayOf(Row("R1", "R2", "R3", "B1", "B2", "B3", "Red", "Blue"))
                                 + matches.sortedBy { it.matchNumber }
                             .map {
@@ -104,7 +104,7 @@ fun registerUtilityCommands(bot: Bot) {
                                     it.alliances.blue.score.run { if (blueWon) "$this*" else "$this " },
                                 )
                             }
-                    ) + "```", embed))).await()
+                    ) + "```", listOf(embed)).build()).await()
                     return@launch
                 }
 
@@ -131,17 +131,19 @@ fun registerUtilityCommands(bot: Bot) {
         .addOption(OptionType.INTEGER, "year", "The year to get data from", true)
         .addOption(OptionType.STRING, "event", "The event to get data from", true, true)
 //            .addOption(OptionType.STRING, "match", "The match ")
+        .addOption(OptionType.BOOLEAN, "full", "Whether the full match should be drawn as well as the auto", false)
     ) { event ->
         val hook = event.hook
         event.deferReply().await()
 
         val team = event.getOption("team")!!.asInt
         val year = event.getOption("year")!!.asInt
+        val full = event.getOption("full")?.asBoolean == true
         val eventObj = bot.theBlueAlliance.eventByName(event.getOption("event")!!.asString, year) ?: throw CommandException("Event not found!  Try another name for it")
 
-        val drawn = bot.paths.renderAutos(team, year, eventObj.key) ?: throw CommandException("No data found!")
+        val drawn = (if (full) bot.paths.renderMatches(team, year, eventObj.key) else bot.paths.renderAutos(team, year, eventObj.key)) ?: throw CommandException("No data found!")
 
-        hook.editOriginalEmbeds(Commands.embed("$team's Autos at ${eventObj.shortName ?: eventObj.name}"))
+        hook.editOriginalEmbeds(Commands.embed("$team's ${if (full) "matches" else "autos"} at ${eventObj.shortName ?: eventObj.name}"))
             .setFiles(FileUpload.fromData(drawn, "autos.png"))
             .await()
     }
@@ -327,7 +329,7 @@ fun registerUtilityCommands(bot: Bot) {
             ZoneId.of(event.getOption("zone")!!.asString).id
         } catch (e: Exception /*no multi-catch...*/) {
             throw CommandException("Couldn't parse a valid time zone!  " +
-                    "Make sure you specify it in either region-based (i.e. America/New_York) or UTC+n format")
+                    "Make sure you specify it in [tz database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) format")
         }
         bot.database.trnsctn {
             val user = event.user.m

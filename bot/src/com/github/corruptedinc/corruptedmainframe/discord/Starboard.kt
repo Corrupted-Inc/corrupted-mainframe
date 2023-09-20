@@ -5,8 +5,8 @@ import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.StarredMessage
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.StarredMessages
-import dev.minn.jda.ktx.await
-import dev.minn.jda.ktx.listener
+import dev.minn.jda.ktx.coroutines.await
+import dev.minn.jda.ktx.events.listener
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel
@@ -27,6 +27,7 @@ class Starboard(private val bot: Bot) {
             if (!event.isFromGuild) return@listener
 
             val u = event.retrieveUser().await()
+
             // get a list of the guild's starboards
             val board = bot.database.trnsctn {
                 val g = event.guild.m
@@ -42,6 +43,7 @@ class Starboard(private val bot: Bot) {
             // if there's enough reactions, star it (the function checks if it's already been starred)
             // we have to retrieve the message to get the reaction counts
             val msg = event.retrieveMessage().await()
+            if (msg.author.idLong == bot.jda.selfUser.idLong && msg.embeds.singleOrNull()?.title?.contains("Starboard") == true) return@listener
             val reaction = msg.reactions.find { event.reaction.emoji.asReactionCode == it.emoji.asReactionCode } ?: return@listener
             if (board.second <= reaction.count) {
                 star(event.channel as GuildMessageChannel, u, event.messageIdLong, board.third)
@@ -61,6 +63,8 @@ class Starboard(private val bot: Bot) {
 
     suspend fun star(channel: GuildMessageChannel, author: User, messageID: Long, boardID: Long) {
         val points = bot.leveling.starboardPoints(bot.leveling.level(author, channel.guild))
+
+        val message = channel.retrieveMessageById(messageID).await() ?: return
 
         val (alreadyStarred, starboardChannelID, name) = bot.database.trnsctn {
             val g = channel.guild.m
@@ -82,6 +86,8 @@ class Starboard(private val bot: Bot) {
 
             if (alreadyStarred) return@trnsctn Triple(true, board.channel, board.name)
 
+            if (author.idLong == bot.jda.selfUser.idLong) return@trnsctn Triple(true, board.channel, board.name)
+
             StarredMessage.new {
                 this.guild = g
                 this.messageID = messageID
@@ -92,8 +98,6 @@ class Starboard(private val bot: Bot) {
         }
 
         if (alreadyStarred || starboardChannelID == null) return
-
-        val message = channel.retrieveMessageById(messageID).await() ?: return
 
         // would be nice if this could be put in the above transaction, but oh well
         bot.leveling.addPoints(message.author, points, channel)

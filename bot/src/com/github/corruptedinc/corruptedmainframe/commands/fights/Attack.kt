@@ -62,17 +62,21 @@ interface Attack {
             InstakillAttack(listOf(Category.BOT), 0.5, "%v gazed into %a's cold, dead eyes!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a invoked its god-like power!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a erased %v!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.5, "%a shattered %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a obliterated %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a pulverised %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a eviscerated %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a vaporized %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a consumed %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.1, "%a compressed some lithium-6 deuteride!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.1, "%a cured %v's treasonous tendencies!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.1, "%a executed %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.1, "%a is become death, destroyer of worlds!", 0),
             InstakillAttack(listOf(Category.BOT), 0.25, "%a violated the geneva conventions!", 0),
             InstakillAttack(listOf(Category.BOT), 0.25, "%a ground %v to dust!", 0),
             InstakillAttack(listOf(Category.BOT), 0.1, "%a deorbited the moon!", 0),
             InstakillAttack(listOf(Category.BOT), 0.1, "%a demonstrated the formation of trinitite to %v!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.01, "%a licked %v!", 0),
 
             // LINUX
             // REGULAR ATTACKS

@@ -3,10 +3,8 @@ package com.github.corruptedinc.corruptedmainframe.commands
 import com.beust.klaxon.Converter
 import com.beust.klaxon.JsonValue
 import com.beust.klaxon.Klaxon
-import com.google.common.cache.Cache
-import com.google.common.cache.CacheBuilder
-import com.google.common.cache.CacheLoader
-import com.google.common.cache.LoadingCache
+import com.github.benmanes.caffeine.cache.Caffeine
+import com.github.benmanes.caffeine.cache.LoadingCache
 import java.net.URL
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -20,13 +18,9 @@ class Reddit {
     private val klaxon = Klaxon()
     private val client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).build()
     private val cache: LoadingCache<String, Posts?> =
-        CacheBuilder.newBuilder().expireAfterWrite(Duration.of(1, ChronoUnit.HOURS))
+        Caffeine.newBuilder().expireAfterWrite(Duration.of(1, ChronoUnit.HOURS))
             .maximumSize(SUBREDDIT_CACHE_SIZE)
-            .build(object : CacheLoader<String, Posts?>() {
-                override fun load(key: String): Posts? {
-                    return top(key)
-                }
-            })
+            .build { key -> top(key) }
 
     companion object {
         private const val SUBREDDIT_CACHE_SIZE = 1024L

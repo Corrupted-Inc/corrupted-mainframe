@@ -61,6 +61,15 @@ class RobotPaths(private val bot: Bot) {
 //        return bot.pathDrawer.robotPaths(listOf(data), year, color(match.alliances?.red?.teamKeys?.contains("frc$team") ?: true))
 //    }
 
+    suspend fun renderMatches(team: Int, year: Int, eventKey: String, xInverted: Boolean = false, yInverted: Boolean = false): ByteArray? {
+        val matches = bot.theBlueAlliance.matches(team, eventKey) ?: return null
+        if (matches.isEmpty()) return null
+
+        val data = matches.mapNotNull { getPath(team, year, it, Type.FULL) }
+
+        return bot.pathDrawer.robotPaths(data, year, RGB(255U, 255U, 255U), xInverted, yInverted)
+    }
+
     suspend fun renderAutos(team: Int, year: Int, eventKey: String, xInverted: Boolean = false, yInverted: Boolean = false): ByteArray? {
         val matches = bot.theBlueAlliance.matches(team, eventKey) ?: return null
         if (matches.isEmpty()) return null

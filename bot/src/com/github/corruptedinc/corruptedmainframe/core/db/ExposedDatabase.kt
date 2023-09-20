@@ -2,12 +2,9 @@ package com.github.corruptedinc.corruptedmainframe.core.db
 
 import com.github.corruptedinc.corruptedmainframe.commands.fights.Attack
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.CommandRuns.index
-import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
-import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.GuildMs.default
-import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AutoRole.Companion.referrersOn
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
-import com.github.corruptedinc.corruptedmainframe.discord.Starboard
-import net.dv8tion.jda.api.entities.*
+import net.dv8tion.jda.api.entities.Guild
+import net.dv8tion.jda.api.entities.User
 import org.jetbrains.exposed.dao.LongEntity
 import org.jetbrains.exposed.dao.LongEntityClass
 import org.jetbrains.exposed.dao.id.EntityID
@@ -15,6 +12,7 @@ import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.javatime.datetime
 import org.jetbrains.exposed.sql.javatime.duration
+import org.jetbrains.exposed.sql.javatime.time
 import org.jetbrains.exposed.sql.javatime.timestamp
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.Duration
@@ -43,6 +41,8 @@ class ExposedDatabase(val db: Database, bot: Bot) {
                 Starboards,
                 CommandRuns,
                 *frcDB.tables(),
+                SubmittedPickupLines,
+                SlotRuns
             )
 
             // apply starboard migrations
@@ -88,7 +88,7 @@ class ExposedDatabase(val db: Database, bot: Bot) {
     object GuildMs : LongIdTable(name = "guilds") {
         val discordId = long("discord_id").uniqueIndex()
         val currentlyIn = bool("currently_in").default(true)
-        val levelsEnabled = bool("levels_enabled").default(true)
+        val levelsEnabled = bool("levels_enabled").default(false)
         val fightCategories = ulong("fight_categories").default(Attack.Category.GENERAL.bitmask)
         val fightCooldown = duration("fight_cooldown").default(Duration.of(5, ChronoUnit.MINUTES))
         val botBuild = long("bot_build").default(0)
@@ -182,6 +182,7 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         val popups = bool("popups").default(true)
         val fightCooldown = timestamp("fight_cooldown").default(Instant.EPOCH)
         val rank = long("rank").default(0)
+        val shadowbanned = bool("shadowbanned").default(false)
     }
 
     class Point(id: EntityID<Long>) : LongEntity(id) {
@@ -193,6 +194,8 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         var popups by Points.popups
         var fightCooldown by Points.fightCooldown
         var rank by Points.rank
+        var shadowbanned by Points.shadowbanned
+        val slots by SlotRun referrersOn SlotRuns.points
     }
 
     //todo this isn't needed, remove
@@ -298,12 +301,45 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         val content = text("content")
     }
 
-    // TODO: finish
     object Fights : LongIdTable(name = "fights") {
         val guild = reference("guild", GuildMs)
         val initiator = reference("user", UserMs)
         val victim = reference("user", UserMs)
+//        val version = short("version")
+    }
 
+    object SubmittedPickupLines : LongIdTable(name = "submitted_pickup_lines") {
+        val guild = reference("guild", GuildMs)
+        val user = reference("user", UserMs)
+        val timestamp = timestamp("timestamp")
+        val line = varchar("line", 255)
+    }
+
+    class SubmittedPickupLine(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<SubmittedPickupLine>(SubmittedPickupLines)
+
+        var guild     by GuildM referencedOn SubmittedPickupLines.guild
+        var user      by UserM referencedOn SubmittedPickupLines.user
+        var timestamp by SubmittedPickupLines.timestamp
+        var line      by SubmittedPickupLines.line
+    }
+
+    object SlotRuns : LongIdTable("slot_runs") {
+        val points = reference("points", Points).index()
+        val bet = double("bet")
+        val winnings = double("winnings")
+        val timestamp = timestamp("timestamp")
+        val results = varchar("results", VARCHAR_MAX_LENGTH)
+    }
+
+    class SlotRun(id: EntityID<Long>) : LongEntity(id) {
+        companion object : LongEntityClass<SlotRun>(SlotRuns)
+
+        var points    by Point referencedOn SlotRuns.points
+        var bet       by SlotRuns.bet
+        var winnings  by SlotRuns.winnings
+        var timestamp by SlotRuns.timestamp
+        var results   by SlotRuns.results
     }
 
     // TODO: create alternative and deprecate
@@ -327,7 +363,7 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         return@trnsctn found.points
     }
 
-    context(Transaction) private fun pts(u: UserM, g: GuildM) = Point.find { (Points.guild eq g.id) and (Points.user eq u.id) }.firstOrNull() ?: Point.new {
+    context(Transaction) fun pts(u: UserM, g: GuildM) = Point.find { (Points.guild eq g.id) and (Points.user eq u.id) }.firstOrNull() ?: Point.new {
             this.guild = g
             this.user = u
             this.points = 0.0
@@ -421,6 +457,8 @@ class ExposedDatabase(val db: Database, bot: Bot) {
     fun commandsRun(start: Instant, end: Instant) =
         CommandRun.count(Op.build { CommandRuns.timestamp.between(start, end) })
 
+    context(Transaction)
+    fun admin(user: User) = user.m.botAdmin
     fun adminT(user: User) = trnsctn { user.m.botAdmin }
 
     inline fun <T> trnsctn(crossinline block: context(Transaction, ExposedDatabase) () -> T): T = transaction(db) {
