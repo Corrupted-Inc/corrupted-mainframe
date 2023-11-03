@@ -1,7 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.discord
 
 import com.github.corruptedinc.corruptedmainframe.Config
-import com.github.corruptedinc.corruptedmainframe.audio.Audio
 import com.github.corruptedinc.corruptedmainframe.commands.Commands
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
 import com.github.corruptedinc.corruptedmainframe.commands.Leveling
@@ -20,13 +19,12 @@ import dev.minn.jda.ktx.jdabuilder.injectKTX
 import kotlinx.coroutines.*
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.entities.Activity
-import net.dv8tion.jda.api.events.ReadyEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
-import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent
+import net.dv8tion.jda.api.events.session.ReadyEvent
 import net.dv8tion.jda.api.requests.GatewayIntent
 import net.dv8tion.jda.api.utils.cache.CacheFlag
 import org.jetbrains.exposed.sql.Database
@@ -61,9 +59,8 @@ class Bot(val config: Config) {
             driver = config.databaseDriver,
             databaseConfig = DatabaseConfig { useNestedTransactions = true }  // TODO: make individual functions not start their own transactions
         ), this)
-    val buttonListeners = mutableListOf<(ButtonInteractionEvent) -> Unit>()
+//    private val buttonListeners = mutableListOf<(ButtonInteractionEvent) -> Unit>()
     // load components
-    val audio = Audio(this)
     val leveling = Leveling(this)
     val starboard = Starboard(this)
     val commands = Commands(this)
@@ -86,16 +83,9 @@ class Bot(val config: Config) {
     }
 
     init {
-        Runtime.getRuntime().addShutdownHook(Thread {
-            // on shutdown, save currently playing audio to the database
-            // TODO: add timeout so that it doesn't resume if the bot was offline for more than a few minutes
-            log.info("Saving audio state to database...")
-            audio.gracefulShutdown()
-            log.info("Finished, exiting")
-        })
 
         jda.listener<ReadyEvent> { event ->
-            log.info("Logged in as ${event.jda.selfUser.asTag}")
+            log.info("Logged in as ${event.jda.selfUser.name}")
 
             updateActivity()
 
@@ -235,10 +225,10 @@ class Bot(val config: Config) {
     }
 
     init {
-        jda.listener<ButtonInteractionEvent> { event ->
-            if (database.bannedT(event.user)) return@listener
-            buttonListeners.forEach { it(event) }
-        }
+//        jda.listener<ButtonInteractionEvent> { event ->
+//            if (database.bannedT(event.user)) return@listener
+//            buttonListeners.forEach { it(event) }
+//        }
 
         plugins.loadPlugins()
         commands.registerAll()

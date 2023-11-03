@@ -13,7 +13,6 @@ import com.google.devtools.ksp.symbol.*
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
-import net.dv8tion.jda.api.entities.Channel
 import net.dv8tion.jda.api.entities.IMentionable
 import net.dv8tion.jda.api.entities.Message.Attachment
 import net.dv8tion.jda.api.entities.Role
@@ -21,7 +20,6 @@ import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.interactions.commands.OptionType
-import net.dv8tion.jda.api.interactions.commands.build.CommandData
 import net.dv8tion.jda.api.interactions.commands.build.Commands
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
 import java.time.Instant
@@ -201,6 +199,7 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
             .addImport("com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion", "embed", "ERROR_COLOR")
             .addImport("dev.minn.jda.ktx.coroutines", "await")
             .addImport("com.github.corruptedinc.corruptedmainframe.utils", "ephemeral")
+            .addImport("com.github.corruptedinc.corruptedmainframe.utils", "commandPath")
             .addImport("com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion", "m")
             .addImport("com.github.corruptedinc.corruptedmainframe.commands.Commands", "Cmd")
             .import(SlashCommandInteractionEvent::class)
@@ -236,8 +235,9 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
     }
 
     private inline fun <reified T : Annotation> KSAnnotated.findAnnotations(): List<T> {
+        val getAllValueArguments = Class.forName("org.jetbrains.kotlin.resolve.lazy.descriptors.LazyAnnotationDescriptor").getDeclaredMethod("getAllValueArguments")
         return annotations.filter { it.annotationType.qName() == T::class.qualifiedName }.map { found ->
-            val args = found::class.java.getDeclaredMethod("getResolved").apply { isAccessible = true }.invoke(found).let { it::class.java.interfaces.first().getDeclaredMethod("getAllValueArguments").invoke(it) } as Map<*, *>
+            val args = found::class.java.getDeclaredMethod("getResolved").apply { isAccessible = true }.invoke(found).let { getAllValueArguments.invoke(it) } as Map<*, *>
             val values = args.mapKeys { it.key.toString() }.mapValues { it.value!!::class.java.superclass.getDeclaredMethod("getValue").invoke(it.value) }
                 .mapKeys { k -> T::class.primaryConstructor!!.parameters.single { it.name == k.key } }
             T::class.constructors.first().callBy(values)

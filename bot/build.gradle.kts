@@ -1,13 +1,19 @@
 plugins {
     id("kotlin")
 //    id("io.gitlab.arturbosch.detekt").version("1.18.0")
-    id("com.google.devtools.ksp") version "1.7.10-1.0.6"
+    id("com.google.devtools.ksp") version "1.9.20-1.0.14"
 }
 
 sourceSets.main {
     java.srcDirs("src")
     java.srcDirs("build/generated/ksp/main/kotlin/")
     resources.srcDirs("resources")
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
 }
 
 repositories {
@@ -19,19 +25,20 @@ dependencies {
     testImplementation(kotlin("test-junit5"))
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.2")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.9.2")
-    implementation("net.dv8tion:JDA:5.0.0-alpha.20")
+    implementation("net.dv8tion:JDA:5.0.0-beta.17")
     implementation("com.github.minndevelopment:jda-ktx:0.9.5-alpha.19")
     implementation(group = "org.postgresql", name = "postgresql", version = "42.2.27")
     implementation(group = "org.slf4j", name = "slf4j-simple", version = "1.7.30")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.6.4")
-    implementation(group = "org.jetbrains.exposed", name = "exposed-dao", version = "0.39.2")
-    implementation(group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "0.39.2")
-    implementation(group = "org.jetbrains.exposed", name = "exposed-java-time", version = "0.39.2")
+    implementation(group = "org.jetbrains.exposed", name = "exposed-dao", version = "0.40.1")
+    implementation(group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "0.40.1")
+    implementation(group = "org.jetbrains.exposed", name = "exposed-java-time", version = "0.40.1")
 //    implementation("com.github.walkyst:lavaplayer-fork:1.3.98.4")
-    implementation("dev.arbjerg:lavaplayer:2.0.1")
+//    implementation("dev.arbjerg:lavaplayer:2.0.1")
 //    runtimeOnly("com.sedmelluq:lavaplayer-common:1.0.6")
     implementation("ch.obermuhlner:big-math:2.3.2")
     implementation("com.github.ben-manes.caffeine:caffeine:3.1.5")
+    implementation("org.apache.httpcomponents.client5:httpclient5:5.2.1")
     implementation(project(":annotations"))
     compileOnly(project(":annotationprocessor"))
     ksp(project(":annotationprocessor"))
@@ -106,14 +113,5 @@ tasks {
 //        archives(javadocJar)
         archives(classesJar)
         archives(jar)
-    }
-}
-
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    kotlinOptions {
-        freeCompilerArgs = freeCompilerArgs + "-Xopt-in=kotlin.RequiresOptIn"
-        freeCompilerArgs = freeCompilerArgs + "-opt-in=kotlin.ExperimentalStdlibApi"
-        freeCompilerArgs = freeCompilerArgs + "-Xcontext-receivers"
-        jvmTarget = "11"
     }
 }

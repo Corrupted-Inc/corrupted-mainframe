@@ -5,8 +5,8 @@ import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.LoadingCache
 import com.github.corruptedinc.corruptedmainframe.utils.levenshtein
 import kotlinx.coroutines.*
-import org.apache.http.client.methods.HttpGet
-import org.apache.http.impl.client.HttpClientBuilder
+import org.apache.hc.client5.http.classic.methods.HttpGet
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder
 import java.net.URI
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
@@ -17,24 +17,22 @@ class TheBlueAlliance(private val token: String, private val scope: CoroutineSco
     val klaxon = Klaxon()
 
     private inline fun <reified T> get(path: String): T? {
-        val req = HttpGet()
+        val req = HttpGet(URI.create("https://www.thebluealliance.com/api/v3$path"))
         req.addHeader("X-TBA-Auth-Key", token)
-        req.uri = URI.create("https://www.thebluealliance.com/api/v3$path")
 
-        val output = client.execute(req)
-        if (output.statusLine.statusCode / 100 !in 2..3) return null  // if it isn't a success/redirect, return null
+        val output = client.execute(req) { resp -> resp }
+        if (output.code / 100 !in 2..3) return null  // if it isn't a success/redirect, return null
         val str = output.entity.content.readAllBytes().decodeToString()
         output.close()
         return synchronized(klaxon) { try { klaxon.parse(str) } catch (e: Exception) { null } }
     }
 
     private inline fun <reified T> getArray(path: String): List<T>? {
-        val req = HttpGet()
+        val req = HttpGet(URI.create("https://www.thebluealliance.com/api/v3$path"))
         req.addHeader("X-TBA-Auth-Key", token)
-        req.uri = URI.create("https://www.thebluealliance.com/api/v3$path")
 
-        val output = client.execute(req)
-        if (output.statusLine.statusCode / 100 !in 2..3) return null  // if it isn't a success/redirect, return null
+        val output = client.execute(req) { resp -> resp }
+        if (output.code / 100 !in 2..3) return null  // if it isn't a success/redirect, return null
         val str = output.entity.content.readAllBytes().decodeToString()
         output.close()
         return synchronized(klaxon) { try { klaxon.parseArray(str) } catch (e: Exception) { null } }

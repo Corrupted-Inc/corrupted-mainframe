@@ -9,12 +9,11 @@ import net.dv8tion.jda.api.exceptions.ErrorHandler
 import net.dv8tion.jda.api.hooks.EventListener
 import net.dv8tion.jda.api.hooks.SubscribeEvent
 import net.dv8tion.jda.api.interactions.commands.SlashCommandInteraction
-import net.dv8tion.jda.api.interactions.components.ActionRow
 import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.buttons.ButtonInteraction
 import net.dv8tion.jda.api.requests.ErrorResponse
-import org.apache.commons.codec.binary.Base64
 import java.security.SecureRandom
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 val DEFAULT_PREV = Button.secondary("prev", Emoji.fromUnicode("⬅️"))
@@ -99,7 +98,7 @@ class LambdaPaginator internal constructor(private val nonce: String, private va
 internal fun paginator(size: Long, lambda: (Long) -> MessageEmbed, jda: JDA): LambdaPaginator {
     val nonce = ByteArray(32)
     SecureRandom().nextBytes(nonce)
-    return LambdaPaginator(Base64.encodeBase64String(nonce), TimeUnit.MINUTES.toMillis(15), lambda, size).register(jda)
+    return LambdaPaginator(Base64.getEncoder().encodeToString(nonce), TimeUnit.MINUTES.toMillis(15), lambda, size).register(jda)
 }
 
 fun MessageChannel.lambdaPaginator(size: Long, lambda: (Long) -> MessageEmbed) {

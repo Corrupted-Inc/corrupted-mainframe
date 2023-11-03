@@ -170,7 +170,7 @@ fun registerUtilityCommands(bot: Bot) {
 
         fields.add(MessageEmbed.Field("Account Creation", "<t:${user.timeCreated.toInstant().epochSecond}>", false))
 
-        event.replyEmbeds(Commands.embed(title = user.asTag, content = fields)).ephemeral().await()
+        event.replyEmbeds(Commands.embed(title = user.effectiveName, content = fields)).ephemeral().await()
     }
 
 
@@ -222,7 +222,7 @@ fun registerUtilityCommands(bot: Bot) {
                 }
 
                 val embeds = output.chunked(Commands.REMINDERS_PER_PAGE)
-                    .map { Commands.embed("${event.user.asTag}'s Reminders", content = it) }
+                    .map { Commands.embed("${event.user.effectiveName}'s Reminders", content = it) }
                 if (embeds.isEmpty()) {
                     event.replyEmbeds(Commands.embed("No reminders")).await()
                     return@register

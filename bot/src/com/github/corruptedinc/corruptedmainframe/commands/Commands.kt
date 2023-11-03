@@ -227,7 +227,7 @@ class Commands(val bot: Bot) {
             )).await()
         }
 
-        registerAudioCommands(bot, this)
+//        registerAudioCommands(bot, this)
         registerCommands(bot)
         registerUtilityCommands(bot)
         bot.apply {

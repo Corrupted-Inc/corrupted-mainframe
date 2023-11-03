@@ -22,7 +22,6 @@ import java.time.temporal.ChronoUnit
 
 @OptIn(ExperimentalUnsignedTypes::class)
 class ExposedDatabase(val db: Database, bot: Bot) {
-    val audioDB = AudioDB(this, bot)
     val moderationDB = ModerationDB(this)
     val frcDB = FRCDB(this, bot)
 
@@ -34,7 +33,7 @@ class ExposedDatabase(val db: Database, bot: Bot) {
                 UserMs,
                 GuildUsers,
                 *moderationDB.tables(),
-                *audioDB.tables(),
+//                *audioDB.tables(),
                 Points,
                 Reminders,
                 StarredMessages,

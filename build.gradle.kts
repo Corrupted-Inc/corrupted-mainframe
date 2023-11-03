@@ -1,8 +1,15 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.7.10"
+    kotlin("jvm") version "1.9.20"
+    java
     application
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
 }
 
 allprojects {
@@ -14,21 +21,28 @@ allprojects {
         maven("https://jitpack.io")
     }
 
-    tasks.withType<KotlinCompile> {
-        kotlinOptions.jvmTarget = "11"
+    tasks.withType(Javadoc::class.java).all { enabled = false }
+
+    tasks.withType<KotlinCompile>().configureEach {
+        kotlinOptions {
+            freeCompilerArgs = freeCompilerArgs + "-opt-in=kotlin.RequiresOptIn"
+//        freeCompilerArgs = freeCompilerArgs + "-opt-in=kotlin.ExperimentalStdlibApi"
+            freeCompilerArgs = freeCompilerArgs + "-Xcontext-receivers"
+            jvmTarget = "17"
+        }
     }
+
+//    tasks.withType<JavaCompile> {
+//        options.compilerArgs.addAll(arrayOf("--release", "17"))
+//    }
 }
 
 buildscript {
     dependencies {
-        classpath(kotlin("gradle-plugin", version = "1.7.10"))
+        classpath(kotlin("gradle-plugin", version = "1.9.20"))
     }
 }
 
 application {
     mainClass.set("MainKt")
-}
-
-subprojects {
-    tasks.withType(Javadoc::class.java).all { enabled = false }
 }

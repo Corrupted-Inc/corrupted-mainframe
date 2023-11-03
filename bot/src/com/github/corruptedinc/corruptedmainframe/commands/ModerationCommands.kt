@@ -26,6 +26,7 @@ import net.dv8tion.jda.api.interactions.commands.build.OptionData.MAX_CHOICES
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
 import net.dv8tion.jda.api.utils.MiscUtil
 import net.dv8tion.jda.api.utils.TimeUtil
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import java.time.Duration
@@ -185,7 +186,7 @@ fun registerCommands(bot: Bot) {
                 bot.database.trnsctn {
                     val item = ModerationDB.AutoRoleMessage.find { AutoRoleMessages.message eq messageId }.firstOrNull()
                         ?: throw CommandException("No reaction role found!")
-                    AutoRoles.deleteWhere { AutoRoles.message eq item.id }
+                    AutoRoles.deleteWhere { message eq item.id }
                     item.delete()
                     auditLog(bot, event.user, event.guild, REACTIONROLE_REMOVE, ReactionroleL(0L/*fixme*/, messageId))
                 }
