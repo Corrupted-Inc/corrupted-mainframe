@@ -28,3 +28,7 @@ buildscript {
 application {
     mainClass.set("MainKt")
 }
+
+subprojects {
+    tasks.withType(Javadoc::class.java).all { enabled = false }
+}

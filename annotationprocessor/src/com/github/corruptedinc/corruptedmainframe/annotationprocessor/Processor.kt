@@ -162,17 +162,18 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
         for (command in parsed) {
             for (opt in command.params) {
                 val auto = opt.autocomplete ?: continue
-                val name = auto.func.simpleName.asString() + rng.nextULong().toString()
+                val cName = (auto.func.parentDeclaration as KSClassDeclaration).toClassName()
+                val name = importSet.find { it.first == cName && it.second == listOf(auto.func.simpleName.asString()) }?.third ?: run { val name = auto.func.simpleName.asString() + rng.nextULong().toString(); importSet.add(Triple(cName, listOf(auto.func.simpleName.asString()), name)); name }
                 autocompleteListenerBlock.add("%S -> %L()", command.parent?.name?.plus("/").orEmpty() + command.name + "/${opt.name}", name)
-                importSet.add(Triple((auto.func.parentDeclaration as KSClassDeclaration).toClassName(), listOf(auto.func.simpleName.asString()), name))
                 autocompleteListenerBlock.add(";")
             }
         }
 
         autocompleteListenerBlock.add("else -> return@listener")
 
-        autocompleteListenerBlock.add("}")
+        autocompleteListenerBlock.add("};")
 
+        autocompleteListenerBlock.add("event.replyChoices(res).await()")
         autocompleteListenerBlock.add("}")
 
         autocompleteListenerBlock.add("}")
@@ -189,6 +190,7 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
                     addAliasedImport(import.first, import.second.joinToString("."), import.third)
                 }
             }
+            .addAnnotation(AnnotationSpec.builder(Suppress::class).addMember("\"USELESS_ELVIS\", \"RemoveRedundantQualifierName\", \"RedundantVisibilityModifier\", \"UnusedImport\", \"RedundantUnitReturnType\"").build())
             .addType(type.build())
             .import(SubcommandData::class)
             .import(OptionType::class)
@@ -224,12 +226,22 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
     }
 
     private inline fun <reified T : Annotation> KSAnnotated.findAnnotation(): T? {
-        val found = annotations.singleOrNull { it.annotationType.qName() == T::class.qualifiedName } ?: return null
-        // no questions
-        val args = found::class.java.getDeclaredMethod("getResolved").apply { isAccessible = true }.invoke(found).let { it::class.java.interfaces.first().getDeclaredMethod("getAllValueArguments").invoke(it) } as Map<*, *>
-        val values = args.mapKeys { it.key.toString() }.mapValues { it.value!!::class.java.superclass.getDeclaredMethod("getValue").invoke(it.value) }
-            .mapKeys { k -> T::class.primaryConstructor!!.parameters.single { it.name == k.key } }
-        return T::class.constructors.first().callBy(values)
+//        val found = annotations.singleOrNull { it.annotationType.qName() == T::class.qualifiedName } ?: return null
+//        // no questions
+//        val args = found::class.java.getDeclaredMethod("getResolved").apply { isAccessible = true }.invoke(found).let { it::class.java.interfaces.first().getDeclaredMethod("getAllValueArguments").invoke(it) } as Map<*, *>
+//        val values = args.mapKeys { it.key.toString() }.mapValues { it.value!!::class.java.superclass.getDeclaredMethod("getValue").invoke(it.value) }
+//            .mapKeys { k -> T::class.primaryConstructor!!.parameters.single { it.name == k.key } }
+//        return T::class.constructors.first().callBy(values)
+        return findAnnotations<T>().singleOrNull()
+    }
+
+    private inline fun <reified T : Annotation> KSAnnotated.findAnnotations(): List<T> {
+        return annotations.filter { it.annotationType.qName() == T::class.qualifiedName }.map { found ->
+            val args = found::class.java.getDeclaredMethod("getResolved").apply { isAccessible = true }.invoke(found).let { it::class.java.interfaces.first().getDeclaredMethod("getAllValueArguments").invoke(it) } as Map<*, *>
+            val values = args.mapKeys { it.key.toString() }.mapValues { it.value!!::class.java.superclass.getDeclaredMethod("getValue").invoke(it.value) }
+                .mapKeys { k -> T::class.primaryConstructor!!.parameters.single { it.name == k.key } }
+            T::class.constructors.first().callBy(values)
+        }.toList()
     }
 
     private fun parseParameter(func: KSFunctionDeclaration, param: KSValueParameter, path: String): ParsedParam {
@@ -237,8 +249,15 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
         val annotation = param.findAnnotation<Param>()!!
 
         val pName = annotation.name.ifBlank { param.name!!.asString() }
-        val foundAutocomplete = cls.getAllFunctions().mapNotNull { (it.findAnnotation<Autocomplete>() ?: return@mapNotNull null) to it }
+//        if (path.contains("starboard") && path.contains("modify")) {
+//            throw RuntimeException("AAAAA $path/$pName ")
+//        }
+        val foundAutocomplete = cls.getAllFunctions().flatMap { it.findAnnotations<Autocomplete>().map { a -> a to it } }
+//            .also { if (it.toList().isNotEmpty() && path.contains("modify")) throw RuntimeException("AAAAAA ${it.toList().map { v -> v.first.path.removePrefix("/") }} $path/$pName") }
             .filter { it.first.path.removePrefix("/") == "$path/$pName" }.singleOrNull()
+//        if (foundAutocomplete?.first != null) {
+//            throw RuntimeException("AAAAAAAAAAAAAAAA")
+//        }
         if (foundAutocomplete != null) {
             val at = foundAutocomplete.second
             require(at.extensionReceiver!!.qName() == "com.github.corruptedinc.corruptedmainframe.utils.AutocompleteContext")

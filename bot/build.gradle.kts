@@ -86,12 +86,12 @@ tasks {
         from(sourceSets.main.get().allSource, configurations.runtimeClasspath.get().filter { !it.path.endsWith(".pom") }.map { if (it.isDirectory) it else zipTree(it) }, sourceSets.main.get().output)
     }
 
-    val javadocJar by creating(Jar::class) {
-        dependsOn.add(javadoc)
-        archiveClassifier.set("javadoc")
-        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-        from(javadoc)
-    }
+//    val javadocJar by creating(Jar::class) {
+//        dependsOn.add(javadoc)
+//        archiveClassifier.set("javadoc")
+//        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+//        from(javadoc)
+//    }
 
     val classesJar by creating(Jar::class) {
         dependsOn.add(classes)
@@ -103,7 +103,7 @@ tasks {
 
     artifacts {
         archives(sourcesJar)
-        archives(javadocJar)
+//        archives(javadocJar)
         archives(classesJar)
         archives(jar)
     }

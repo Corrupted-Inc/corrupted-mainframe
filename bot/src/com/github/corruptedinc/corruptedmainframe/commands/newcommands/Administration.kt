@@ -1,6 +1,7 @@
 package com.github.corruptedinc.corruptedmainframe.commands.newcommands
 
 import com.github.benmanes.caffeine.cache.Caffeine
+import com.github.corruptedinc.corruptedmainframe.annotations.Autocomplete
 import com.github.corruptedinc.corruptedmainframe.annotations.Command
 import com.github.corruptedinc.corruptedmainframe.annotations.P
 import com.github.corruptedinc.corruptedmainframe.annotations.ParentCommand
@@ -17,6 +18,7 @@ import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.entities.emoji.UnicodeEmoji
+import net.dv8tion.jda.api.interactions.commands.Command.Choice
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 import kotlin.time.Duration.Companion.minutes
@@ -78,6 +80,14 @@ object Administration {
     @ParentCommand("starboard", "Create/edit/remove starboards", false)
     object StarboardCommands {
         val starboardCache = Caffeine.newBuilder().maximumSize(1024).expireAfterAccess(10, TimeUnit.MINUTES).build<Long, List<String>>()!!
+
+        @Autocomplete("starboard/modify/name")
+        @Autocomplete("starboard/remove/name")
+        suspend inline fun AutocompleteContext.starboardNameAutocomplete(): List<Choice> {
+            val value = event.focusedOption.value.dropWhile { it.isWhitespace() }.dropLastWhile { it.isWhitespace() }
+            val starboards = bot.database.trnsctn { event.guild!!.m.starboards.map { it.name } }.sortedBy { biasedLevenshteinInsensitive(it, value) }
+            return starboards.take(5).map { Choice(it, it) }
+        }
 
         @Command("create", "Create a starboard")
         suspend inline fun CmdCtx.create(

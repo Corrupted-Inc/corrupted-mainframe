@@ -12,4 +12,5 @@ annotation class Param(val name: String = "", val description: String)
 typealias P = Param
 
 @Target(AnnotationTarget.FUNCTION)
+@Repeatable
 annotation class Autocomplete(val path: String)
