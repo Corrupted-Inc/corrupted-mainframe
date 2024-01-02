@@ -7,8 +7,10 @@ import com.github.corruptedinc.corruptedmainframe.commands.Leveling
 import com.github.corruptedinc.corruptedmainframe.commands.RobotPaths
 import com.github.corruptedinc.corruptedmainframe.commands.TheBlueAlliance
 import com.github.corruptedinc.corruptedmainframe.commands.fights.Fights
+import com.github.corruptedinc.corruptedmainframe.commands.newcommands.Administration
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
+import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB
 import com.github.corruptedinc.corruptedmainframe.plugin.PluginLoader
 import com.github.corruptedinc.corruptedmainframe.utils.Emoji
 import com.github.corruptedinc.corruptedmainframe.utils.PathDrawer
@@ -19,6 +21,7 @@ import dev.minn.jda.ktx.jdabuilder.injectKTX
 import kotlinx.coroutines.*
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.entities.Activity
+import net.dv8tion.jda.api.entities.emoji.Emoji.*
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
@@ -151,6 +154,51 @@ class Bot(val config: Config) {
             event.guild.removeRoleFromMember(event.retrieveUser().await(), role).queue()
         }
 
+        @Suppress("ReturnCount")
+        jda.listener<MessageReactionAddEvent> { event ->
+            if (event.user?.let { database.bannedT(it) } == true) return@listener
+            if (event.user?.idLong == jda.selfUser.idLong) return@listener
+
+            val emote = when (event.reaction.emoji.type) {
+                Type.UNICODE -> event.reaction.emoji.asUnicode().name
+                Type.CUSTOM -> event.reaction.emoji.asCustom().asMention
+            }
+
+            val (role, remove) = database.trnsctn {
+                val menu = ModerationDB.RoleMenu.find { ModerationDB.RoleMenus.message eq event.messageIdLong }.singleOrNull() ?: return@trnsctn null to false
+                val role = menu.roles.singleOrNull { it.emote == emote } ?: return@trnsctn null to true
+                role.role to false
+            }
+
+            if (remove) {
+                event.reaction.removeReaction(event.user!!).await()
+                return@listener
+            }
+            val r = event.guild.getRoleById(role ?: return@listener) ?: return@listener
+
+            event.guild.addRoleToMember(event.retrieveUser().await(), r).await()
+        }
+
+        @Suppress("ReturnCount")
+        jda.listener<MessageReactionRemoveEvent> { event ->
+            if (event.user?.let { database.bannedT(it) } == true) return@listener
+
+            val emote = when (event.reaction.emoji.type) {
+                Type.UNICODE -> event.reaction.emoji.asUnicode().name
+                Type.CUSTOM -> event.reaction.emoji.asCustom().asMention
+            }
+
+            val role = database.trnsctn {
+                val menu = ModerationDB.RoleMenu.find { ModerationDB.RoleMenus.message eq event.messageIdLong }.singleOrNull() ?: return@trnsctn null
+                val role = menu.roles.singleOrNull { it.emote == emote } ?: return@trnsctn null
+                role.role
+            }
+
+            val r = event.guild.getRoleById(role ?: return@listener) ?: return@listener
+
+            event.guild.removeRoleFromMember(event.retrieveUser().await(), r).await()
+        }
+
         jda.listener<GuildJoinEvent> {
 //            event.guild.loadMembers {
 //                database.addLink(event.guild, it.user)
@@ -221,6 +269,9 @@ class Bot(val config: Config) {
                     event.channel.sendMessage("did you mean: `<giveme ${if (foundRole.contains(' ')) "\"$foundRole\"" else foundRole}`").await()
                 }
             }
+        }
+        scope.launch {
+            Administration.Warnings.listener(this@Bot)
         }
     }
 

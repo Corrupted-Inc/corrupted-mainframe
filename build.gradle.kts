@@ -26,15 +26,10 @@ allprojects {
     tasks.withType<KotlinCompile>().configureEach {
         kotlinOptions {
             freeCompilerArgs = freeCompilerArgs + "-opt-in=kotlin.RequiresOptIn"
-//        freeCompilerArgs = freeCompilerArgs + "-opt-in=kotlin.ExperimentalStdlibApi"
             freeCompilerArgs = freeCompilerArgs + "-Xcontext-receivers"
             jvmTarget = "17"
         }
     }
-
-//    tasks.withType<JavaCompile> {
-//        options.compilerArgs.addAll(arrayOf("--release", "17"))
-//    }
 }
 
 buildscript {

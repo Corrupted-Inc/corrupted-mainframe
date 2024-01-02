@@ -1,9 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.annotationprocessor
 
-import com.github.corruptedinc.corruptedmainframe.annotations.Autocomplete
-import com.github.corruptedinc.corruptedmainframe.annotations.Command
-import com.github.corruptedinc.corruptedmainframe.annotations.Param
-import com.github.corruptedinc.corruptedmainframe.annotations.ParentCommand
+import com.github.corruptedinc.corruptedmainframe.annotations.*
 import com.google.devtools.ksp.getAllSuperTypes
 import com.google.devtools.ksp.processing.Dependencies
 import com.google.devtools.ksp.processing.Resolver
@@ -22,6 +19,7 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
+import net.dv8tion.jda.api.interactions.commands.build.SubcommandGroupData
 import java.time.Instant
 import kotlin.random.Random
 import kotlin.random.nextULong
@@ -38,12 +36,37 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
 
         val parsed = symbols.map { cmd ->
             val parent = cmd.parent as? KSClassDeclaration
-            val parentAnnotation = parent?.findAnnotation<ParentCommand>()
-            val p = parentAnnotation?.let { ParsedParentCommand(it.name.ifBlank { parent.simpleName.getShortName() }, it.description, it.global) }
-            parseSingle(cmd as KSFunctionDeclaration, p)
+//            val group = parent?.findAnnotation<CommandGroup>()
+            var group: ParsedCommandGroup? = null
+
+            val foundGroup = parent?.findAnnotation<CommandGroup>()
+            val p = if (foundGroup != null) {
+                group = ParsedCommandGroup(foundGroup.name.ifBlank { parent.simpleName.getShortName() }, foundGroup.description)
+                val parentClass = (parent.parent as? KSClassDeclaration)
+                val pa = parentClass?.findAnnotation<ParentCommand>() ?: throw RuntimeException("command group must be part of a parent command")
+
+                ParsedParentCommand(pa.name.ifBlank { parentClass.simpleName.getShortName() }, pa.description, pa.global)
+            } else {
+                val parentAnnotation = parent?.findAnnotation<ParentCommand>()
+
+                parentAnnotation?.let { ParsedParentCommand(it.name.ifBlank { parent.simpleName.getShortName() }, it.description, it.global) }
+            }
+//            val parentAnnotation = parent?.findAnnotation<ParentCommand>()
+//            val p = parentAnnotation?.let { ParsedParentCommand(it.name.ifBlank { parent.simpleName.getShortName() }, it.description, it.global) }
+            parseSingle(cmd as KSFunctionDeclaration, group, p)
         }.toList()
 
-        val asTree = (parsed.mapNotNull { it.parent }.toSet() + null).associateWith { parsed.filter { v -> v.parent == it } }
+        val asTree: MutableMap<ParsedParentCommand?, MutableMap<ParsedCommandGroup?, List<ParsedSingleCommand>>> = mutableMapOf()
+        // (parsed.mapNotNull { it.parent }.toSet() + null).associateWith { parsed.filter { v -> v.parent == it } }
+        val parentSet = parsed.mapNotNull { it.parent }.toMutableSet() + null
+        val groupSet = parsed.mapNotNull { it.group }.toSet() + null
+        for (item in parentSet) {
+            val value: MutableMap<ParsedCommandGroup?, List<ParsedSingleCommand>> = mutableMapOf()
+            for (v in groupSet) {
+                value[v] = parsed.filter { it.parent == item && it.group == v }
+            }
+            asTree[item] = value
+        }
 
         val files = parsed.mapNotNull { it.func.containingFile }.toSet()
         val output = environment.codeGenerator.createNewFile(Dependencies(true, *files.toTypedArray()), "com.github.corruptedinc.corruptedmainframe.gen", "GeneratedCommands", "kt")
@@ -57,22 +80,44 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
         for (parent in asTree) {
             val k = parent.key ?: continue
             dataBuilder.add("Cmd(slash(%S, %S)", k.name, k.description)
-            dataBuilder.add(".addSubcommands(")
-            for (child in parent.value) {
-                dataBuilder.add("SubcommandData(%S, %S)", child.name, child.description)
-                for (param in child.params) {
-                    dataBuilder.add(".addOption(OptionType.%L, %S, %S, %L, %L)", param.type.name, param.name, param.description, !param.optional, param.autocomplete != null)
+            if (parent.value.any { it.key != null }) {
+                dataBuilder.add(".addSubcommandGroups(")
+                for ((group, cmds) in parent.value) {
+                    group ?: continue
+                    dataBuilder.add("SubcommandGroupData(%S, %S)", group.name, group.description)
+                    dataBuilder.add(".addSubcommands(")
+                    for (cmd in cmds) {
+                        dataBuilder.add("SubcommandData(%S, %S)", cmd.name, cmd.description)
+                        for (param in cmd.params) {
+                            dataBuilder.add(".addOption(OptionType.%L, %S, %S, %L, %L)", param.type.name, param.name, param.description, !param.optional, param.autocomplete != null)
+                        }
+                        dataBuilder.add(",")
+                    }
+                    dataBuilder.add(")")
                 }
-                dataBuilder.add(",")
+                dataBuilder.add(")")
+            }
+
+            if (parent.value[null] != null) {
+                dataBuilder.add(".addSubcommands(")
+                for (cmd in parent.value[null]!!) {
+                    dataBuilder.add("SubcommandData(%S, %S)", cmd.name, cmd.description)
+                    for (param in cmd.params) {
+                        dataBuilder.add(".addOption(OptionType.%L, %S, %S, %L, %L)", param.type.name, param.name, param.description, !param.optional, param.autocomplete != null)
+                    }
+                    dataBuilder.add(",")
+                }
             }
             dataBuilder.add("), ${k.global}),")
         }
-        for (command in asTree[null].orEmpty()) {
-            dataBuilder.add("Cmd(slash(%S, %S)", command.name, command.description)
-            for (param in command.params) {
-                dataBuilder.add(".addOption(OptionType.%L, %S, %S, %L, %L)", param.type.name, param.name, param.description, !param.optional, param.autocomplete != null)
+        for (g in asTree[null].orEmpty()) {
+            for (command in g.value) {
+                dataBuilder.add("Cmd(slash(%S, %S)", command.name, command.description)
+                for (param in command.params) {
+                    dataBuilder.add(".addOption(OptionType.%L, %S, %S, %L, %L)", param.type.name, param.name, param.description, !param.optional, param.autocomplete != null)
+                }
+                dataBuilder.add(", ${command.global}),")
             }
-            dataBuilder.add(", ${command.global}),")
         }
 
         dataBuilder.add(")")
@@ -98,7 +143,7 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
         val importSet = mutableSetOf<Triple<ClassName, List<String>, String>>()
         val rng = Random(0)
         for (command in parsed) {
-            val path = command.parent?.name?.plus("/").orEmpty() + command.name
+            val path = command.parent?.name?.plus("/").orEmpty() + command.group?.name?.plus("/").orEmpty() + command.name
             val garbage = rng.nextULong().toString()
             mainListenerBlock.add("%S -> %L(", path, command.func.simpleName.asString() + garbage)
             for (param in command.params) {
@@ -191,6 +236,7 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
             .addAnnotation(AnnotationSpec.builder(Suppress::class).addMember("\"USELESS_ELVIS\", \"RemoveRedundantQualifierName\", \"RedundantVisibilityModifier\", \"UnusedImport\", \"RedundantUnitReturnType\"").build())
             .addType(type.build())
             .import(SubcommandData::class)
+            .import(SubcommandGroupData::class)
             .import(OptionType::class)
             .addImport(Commands::class, "slash")
             .addImport("com.github.corruptedinc.corruptedmainframe.utils", "CommandContext", "CmdCtx", "AtcmpCtx")
@@ -279,7 +325,9 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
             Role::class.qualifiedName -> OptionType.ROLE
             IMentionable::class.qualifiedName -> OptionType.MENTIONABLE
             Double::class.qualifiedName -> OptionType.NUMBER
-            Attachment::class.qualifiedName -> OptionType.ATTACHMENT  // TODO: ByteArray jank?
+            Attachment::class.qualifiedName -> OptionType.ATTACHMENT  // TODO: ByteArray/InputStream jank?
+            // TODO: enums?
+            // TODO: instant, duration
             else -> if ((t.declaration as KSClassDeclaration).getAllSuperTypes().any { it.declaration.qualifiedName!!.asString() == "net.dv8tion.jda.api.entities.channel.Channel" } || tName == "net.dv8tion.jda.api.entities.channel.Channel") OptionType.CHANNEL else throw IllegalArgumentException(param.name!!.asString())
         }
 
@@ -288,22 +336,28 @@ class Processor(private val environment: SymbolProcessorEnvironment) : SymbolPro
         return ParsedParam(pName, annotation.description, param, type, optional, autocomplete)
     }
 
-    private fun parseSingle(func: KSFunctionDeclaration, parent: ParsedParentCommand?): ParsedSingleCommand {
+    private fun parseSingle(func: KSFunctionDeclaration, group: ParsedCommandGroup?, parent: ParsedParentCommand?): ParsedSingleCommand {
         require(func.extensionReceiver!!.qName() == "com.github.corruptedinc.corruptedmainframe.utils.CommandContext")
         require(Modifier.SUSPEND in func.modifiers)
         require(Modifier.INLINE in func.modifiers)
         val annotation = func.findAnnotation<Command>()!!
         val name = annotation.name.ifBlank { func.simpleName.getShortName() }
-        val path = (if (parent != null) "${parent.name}/" else "") + name
+        val path = (if (parent != null) "${parent.name}/" else "") + (if (group != null) "${group.name}/" else "") + name
         val params = func.parameters.map { parseParameter(func, it, path) }
-        return ParsedSingleCommand(name, annotation.description, params, func, parent, parent?.global ?: annotation.global)
+        return ParsedSingleCommand(name, annotation.description, params, func, group, parent, parent?.global ?: annotation.global)
     }
 
     data class ParsedParentCommand(val name: String, val description: String, val global: Boolean)
 
-    data class ParsedSingleCommand(val name: String, val description: String, val params: List<ParsedParam>, val func: KSFunctionDeclaration, val parent: ParsedParentCommand?, val global: Boolean)
+    data class ParsedCommandGroup(val name: String, val description: String)
 
-    data class ParsedParam(val name: String, val description: String, val functionParam: KSValueParameter, val type: OptionType, val optional: Boolean, val autocomplete: ParsedAutocomplete?)
+    data class ParsedSingleCommand(val name: String, val description: String, val params: List<ParsedParam>, val func: KSFunctionDeclaration, val group: ParsedCommandGroup?, val parent: ParsedParentCommand?, val global: Boolean)
+
+    data class ParsedParam(val name: String, val description: String, val functionParam: KSValueParameter, val type: OptionType, val optional: Boolean, val autocomplete: ParsedAutocomplete?) {
+        init {
+            if (description.length > 100) throw RuntimeException("Description of command '$name' is longer than 100 characters!")
+        }
+    }
 
     data class ParsedAutocomplete(val func: KSFunctionDeclaration)
 }

@@ -68,7 +68,7 @@ data class CommandContext(val bot: Bot, val event: SlashCommandInteractionEvent)
     fun assertPermissions(vararg perms: Permission, channel: GuildChannel?) {
         if (bot.database.adminT(event.user) || event.user.id in bot.config.permaAdmins) return
         val member = event.member ?: throw CommandException("Must be run in a server!")
-        val p = if (channel != null) member.getPermissionsExplicit(channel) else member.permissionsExplicit
+        val p = if (channel != null) member.getPermissions(channel) else member.permissions
         if (!p.containsAll(perms.toList())) throw CommandException("Missing permissions!")
     }
 

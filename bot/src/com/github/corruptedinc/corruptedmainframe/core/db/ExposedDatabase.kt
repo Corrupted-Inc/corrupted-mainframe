@@ -12,7 +12,6 @@ import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.javatime.datetime
 import org.jetbrains.exposed.sql.javatime.duration
-import org.jetbrains.exposed.sql.javatime.time
 import org.jetbrains.exposed.sql.javatime.timestamp
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.Duration
@@ -43,6 +42,8 @@ class ExposedDatabase(val db: Database, bot: Bot) {
                 SubmittedPickupLines,
                 SlotRuns
             )
+
+            ModerationDB.UserLogs.createIndex()
 
             // apply starboard migrations
             val starboardSplitVersion = 1
@@ -91,6 +92,7 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         val fightCategories = ulong("fight_categories").default(Attack.Category.GENERAL.bitmask)
         val fightCooldown = duration("fight_cooldown").default(Duration.of(5, ChronoUnit.MINUTES))
         val botBuild = long("bot_build").default(0)
+        val modChannel = long("mod_channel").nullable().default(null)
 
         // deprecated, to be removed
         val starboardChannel = long("starboard_channel").nullable()
@@ -111,10 +113,13 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         var fightCategories by GuildMs.fightCategories
         var fightCooldown by GuildMs.fightCooldown
         var botBuild by GuildMs.botBuild
+        var modChannel by GuildMs.modChannel
 //        val starredMessages by StarredMessage.referrersOn(StarredMessages.guild)
         val crawlJobs by ImageHashJob.referrersOn(ImageHashJobs.guild)
         val autoRoles by ModerationDB.AutoRoleMessage.referrersOn(ModerationDB.AutoRoleMessages.guild)
         val starboards by Starboard referrersOn Starboards.guild
+        val roleMenus by ModerationDB.RoleMenu.referrersOn(ModerationDB.RoleMenus.guild)
+        val warningTypes by ModerationDB.WarningType referrersOn ModerationDB.WarningTypes.guild
 
         val fightCategoryList = object : AbstractMutableSet<Attack.Category>() {
             override val size get() = Attack.Category.values().count { fightCategories and it.bitmask != 0UL }

@@ -20,22 +20,24 @@ class TheBlueAlliance(private val token: String, private val scope: CoroutineSco
         val req = HttpGet(URI.create("https://www.thebluealliance.com/api/v3$path"))
         req.addHeader("X-TBA-Auth-Key", token)
 
-        val output = client.execute(req) { resp -> resp }
-        if (output.code / 100 !in 2..3) return null  // if it isn't a success/redirect, return null
-        val str = output.entity.content.readAllBytes().decodeToString()
-        output.close()
-        return synchronized(klaxon) { try { klaxon.parse(str) } catch (e: Exception) { null } }
+        return client.execute(req) { output ->
+            if (output.code / 100 !in 2..3) return@execute null  // if it isn't a success/redirect, return null
+            val str = output.entity.content.readAllBytes().decodeToString()
+            output.close()
+            synchronized(klaxon) { try { klaxon.parse(str) } catch (e: Exception) { null } }
+        }
     }
 
     private inline fun <reified T> getArray(path: String): List<T>? {
         val req = HttpGet(URI.create("https://www.thebluealliance.com/api/v3$path"))
         req.addHeader("X-TBA-Auth-Key", token)
 
-        val output = client.execute(req) { resp -> resp }
-        if (output.code / 100 !in 2..3) return null  // if it isn't a success/redirect, return null
-        val str = output.entity.content.readAllBytes().decodeToString()
-        output.close()
-        return synchronized(klaxon) { try { klaxon.parseArray(str) } catch (e: Exception) { null } }
+        return client.execute(req) { output ->
+            if (output.code / 100 !in 2..3) return@execute null  // if it isn't a success/redirect, return null
+            val str = output.entity.content.readAllBytes().decodeToString()
+            output.close()
+            synchronized(klaxon) { try { klaxon.parseArray(str) } catch (e: Exception) { null } }
+        }
     }
 
     data class TeamInfo(
@@ -349,4 +351,10 @@ class TheBlueAlliance(private val token: String, private val scope: CoroutineSco
     }
 
     fun zebra(match: Match) = get<Zebra>("/match/${match.key}/zebra_motionworks")
+}
+
+fun main() {
+    val token = "c4kw9EURg7Hl3fJ9IUZ1exk4eA5p876Z3wj6zOYbqPalGqUSA94mnGxraj8ZOrFq"
+    val tba = TheBlueAlliance(token, CoroutineScope(Dispatchers.Default))
+    println(tba.simpleEvent("2023orore"))
 }

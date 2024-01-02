@@ -3,15 +3,38 @@ package com.github.corruptedinc.corruptedmainframe.utils
 import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
 import java.nio.file.Files
 import java.nio.file.Path
-import java.text.ParseException
-import java.text.SimpleDateFormat
 import java.time.Duration
 import java.util.*
 import kotlin.math.min
+import kotlin.time.Duration.Companion.seconds
 
 fun Duration.toHumanReadable(): String {
-    return toString().removePrefix("PT")
-        .replace("(\\d[HMS])(?!$)".toRegex(), "$1 ").lowercase(Locale.getDefault())
+    val parts = mutableListOf<String>()
+    if (toDaysPart() > 0) parts.add("${toDaysPart()} days")
+    if (toHoursPart() > 0) parts.add("${toHoursPart()} hours")
+    if (toMinutesPart() > 0) parts.add("${toMinutesPart()} minutes")
+    if (toSecondsPart() > 0) parts.add("${toSecondsPart()} seconds")
+
+    return parts.joinToString()
+//    return toString().removePrefix("PT")
+//        .replace("(\\d[HMS])(?!$)".toRegex(), "$1 ").lowercase(Locale.getDefault())
+}
+
+fun CharSequence.DDHHMMSStoDuration(): kotlin.time.Duration? {
+    if (any { it !in '0'..'9' && it != ':' && it != '.' }) return null
+    val parts = split(":").toMutableList()
+    var secs = 0.0
+    // seconds
+    parts.removeLastOrNull()?.let { val s = it.toDoubleOrNull() ?: return null; if (s > 60.0) return null; secs += s }
+    // minutes
+    parts.removeLastOrNull()?.let { val s = it.toIntOrNull() ?: return null; if (s > 60) return null; secs += s * 60 }
+    // hours
+    parts.removeLastOrNull()?.let { val s = it.toIntOrNull() ?: return null; if (s > 24) return null; secs += s * 3600 }
+    // days
+    parts.removeLastOrNull()?.let { val s = it.toIntOrNull() ?: return null; secs += s * 86400 }
+    if (parts.isNotEmpty()) return null
+
+    return secs.seconds
 }
 
 @JvmName("levenshtein1")
@@ -93,7 +116,11 @@ fun deleteDirectory(path: Path) {
 
 typealias DoubleRange = ClosedFloatingPointRange<Double>
 
-data class RGB(val r: UByte, val g: UByte, val b: UByte, val a: UByte = 255U)
+data class RGB(val r: UByte, val g: UByte, val b: UByte, val a: UByte = 255U) {
+    override fun toString(): String {
+        return "#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}${a.toString(16).padStart(2, '0')}"
+    }
+}
 
 inline fun <T> T.runIf(condition: Boolean, block: T.() -> T) = if (condition) block() else this
 
@@ -106,3 +133,8 @@ typealias CmdCtx = CommandContext
 typealias AtcmpCtx = AutocompleteContext
 
 fun String.strp() = dropWhile { it.isWhitespace() }.dropLastWhile { it.isWhitespace() }
+
+private val imprecisionRegex = "00000+\\d\\d?$".toRegex()
+private val zeroRegex = "\\.0+$".toRegex()
+
+fun Double.sensibleString() = toString().replace(imprecisionRegex, "").replace(zeroRegex, "")

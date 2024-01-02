@@ -12,6 +12,7 @@ import net.dv8tion.jda.api.interactions.commands.SlashCommandInteraction
 import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.buttons.ButtonInteraction
 import net.dv8tion.jda.api.requests.ErrorResponse
+import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.TimeUnit
@@ -106,7 +107,7 @@ fun MessageChannel.lambdaPaginator(size: Long, lambda: (Long) -> MessageEmbed) {
     sendMessageEmbeds(lambda(0)).setActionRow(paginator.controls).complete()
 }
 
-fun SlashCommandInteraction.replyLambdaPaginator(size: Long, lambda: (Long) -> MessageEmbed) {
+fun SlashCommandInteraction.replyLambdaPaginator(size: Long, lambda: (Long) -> MessageEmbed): ReplyCallbackAction {
     val paginator = paginator(size, lambda, jda)
-    replyEmbeds(lambda(0)).setActionRow(paginator.controls).complete()
+    return replyEmbeds(lambda(0)).setActionRow(paginator.controls)
 }

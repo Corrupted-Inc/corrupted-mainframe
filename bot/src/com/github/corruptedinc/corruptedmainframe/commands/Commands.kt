@@ -27,6 +27,7 @@ import net.dv8tion.jda.api.interactions.commands.build.CommandData
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
 import net.dv8tion.jda.api.interactions.commands.context.MessageContextInteraction
 import net.dv8tion.jda.api.interactions.commands.context.UserContextInteraction
+import net.dv8tion.jda.internal.interactions.CommandDataImpl
 import java.awt.Color
 import java.time.*
 import java.time.temporal.ChronoUnit
@@ -173,24 +174,41 @@ class Commands(val bot: Bot) {
         }
     }
 
+    private infix fun CommandData.eq(other: CommandData): Boolean {
+        return this.toData() == other.toData()
+    }
+
     @Suppress("SwallowedException")
     suspend fun finalizeCommands() {
         newCommands.addAll(GeneratedCommands.commandData().apply { println("Loaded $size commands from annotation processor") })
         bot.log.info("Registering ${newCommands.size} commands...")
         val existing = bot.jda.retrieveCommands().await().map { CommandData.fromCommand(it) to it.idLong }.toSet()
         val new = newCommands.filter { it.global }.map { it.data to 0L }.toSet()
-        val added = new - existing
-        val removed = existing - new
+        val added = new.filterNot { existing.any { e -> e.first eq it.first } }
+        val removed = existing.filterNot { new.any { e -> e.first eq it.first } }
+        bot.log.info("deleting ${removed.size} global commands (${removed.map { it.first.name }}), adding ${added.size} (${added.map { it.first.name }})")
         for (cmd in removed) {
             bot.jda.deleteCommandById(cmd.second).await()
         }
         for (cmd in added) {
             bot.jda.upsertCommand(cmd.first).await()
         }
+        bot.log.info("done with global commands")
         bot.jda.guilds.map {
             bot.scope.launch {
                 try {
-                    it.updateCommands().addCommands(newCommands.filter { !it.global }.map { it.data }).await()
+                    val existing = it.retrieveCommands().await().map { CommandData.fromCommand(it) to it.idLong }.toSet()
+                    val new = newCommands.filter { !it.global }.map { it.data to 0L }.toSet()
+                    val added = new.filterNot { existing.any { e -> e.first eq it.first } }
+                    val removed = existing.filterNot { new.any { e -> e.first eq it.first } }
+                    bot.log.info("deleting ${removed.size} guild commands (${removed.map { it.first.name }}), adding ${added.size} (${added.map { it.first.name }})")
+                    for (cmd in removed) {
+                        it.deleteCommandById(cmd.second).await()
+                    }
+                    for (cmd in added) {
+                        it.upsertCommand(cmd.first).await()
+                    }
+//                    it.updateCommands().addCommands(newCommands.filter { !it.global }.map { it.data }).await()
                 } catch (e: ErrorResponseException) {
                     bot.log.error("Failed to register commands in ${it.name}")
                 }

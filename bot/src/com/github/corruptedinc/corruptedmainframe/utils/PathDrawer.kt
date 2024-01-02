@@ -13,6 +13,7 @@ import kotlin.io.path.*
 class PathDrawer(private val bot: Bot) {
     private val tmpDir: Path = Files.createTempDirectory("svg")
     private val resvg: Path
+    private val fontFile: Path
 
     init {
         val inp = this::class.java.classLoader.getResourceAsStream("resvg")!!
@@ -24,20 +25,28 @@ class PathDrawer(private val bot: Bot) {
         inp.close()
         resvg = fi.toPath().toAbsolutePath()
 
+        val inp2 = this::class.java.classLoader.getResourceAsStream("DejaVuSans.ttf")!!
+        val fi2 = tmpDir.resolve("DejaVuSans.ttf").createFile().toFile()
+        fi2.outputStream().use {
+            inp2.copyTo(it)
+        }
+        inp2.close()
+        fontFile = fi2.toPath().toAbsolutePath()
+
         // clean up temp dir
         Runtime.getRuntime().addShutdownHook(Thread {
             deleteDirectory(tmpDir)
         })
     }
 
-    private suspend fun render(svg: StringBuilder): ByteArray? {
+    suspend fun render(svg: StringBuilder): ByteArray? {
         val start = System.currentTimeMillis()
         val file = tmpDir.resolve("file.svg")
         file.writeText(svg)
         val output = tmpDir.resolve("file.png")
         val stdErr: String
         val exitCode = withContext(Dispatchers.IO) {
-            Runtime.getRuntime().exec(arrayOf(resvg.toString(), file.absolutePathString(), output.absolutePathString()))
+            Runtime.getRuntime().exec(arrayOf(resvg.toString(), "--skip-system-fonts", "--use-font-file", "$fontFile", "--sans-serif-family", "DejaVu Sans", file.absolutePathString(), output.absolutePathString()))
                 .apply { errorStream.readAllBytes().decodeToString().apply { stdErr = this } }
                 .waitFor()
         }

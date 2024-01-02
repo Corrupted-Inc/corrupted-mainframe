@@ -199,7 +199,7 @@ class Leveling(private val bot: Bot) {
 
             event.replyLambdaPaginator(size.toLong()) { v ->
                 area(v * perMessage, (v + 1) * perMessage)
-            }
+            }.await()
         }
     }
 }
