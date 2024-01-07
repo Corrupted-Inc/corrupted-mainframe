@@ -1,19 +1,18 @@
 package com.github.corruptedinc.corruptedmainframe.commands
 
+import com.github.corruptedinc.corruptedmainframe.annotations.Command
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.discord.Bot
 import com.github.corruptedinc.corruptedmainframe.math.InfixNotationParser
-import com.github.corruptedinc.corruptedmainframe.utils.Row
-import com.github.corruptedinc.corruptedmainframe.utils.biasedLevenshteinInsensitive
-import com.github.corruptedinc.corruptedmainframe.utils.ephemeral
-import com.github.corruptedinc.corruptedmainframe.utils.table
+import com.github.corruptedinc.corruptedmainframe.utils.*
 import dev.minn.jda.ktx.coroutines.await
 import dev.minn.jda.ktx.interactions.components.replyPaginator
 import dev.minn.jda.ktx.messages.MessageEditBuilder
 import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.entities.MessageEmbed
-import net.dv8tion.jda.api.interactions.commands.Command
+import net.dv8tion.jda.api.interactions.commands.Command.Choice
+//import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
@@ -119,79 +118,6 @@ fun registerUtilityCommands(bot: Bot) {
             } catch (e: CommandException) {
                 hook.editOriginalEmbeds((Commands.embed("Error", color = Commands.ERROR_COLOR, description = e.message))).await()
             }
-        }
-    }
-
-    bot.commands.register(
-        slash(
-            "zebra",
-            "Plots the Zebra Motionworks data from a team's autos at an event"
-        )
-        .addOption(OptionType.INTEGER, "team", "Team number", true)
-        .addOption(OptionType.INTEGER, "year", "The year to get data from", true)
-        .addOption(OptionType.STRING, "event", "The event to get data from", true, true)
-//            .addOption(OptionType.STRING, "match", "The match ")
-        .addOption(OptionType.BOOLEAN, "full", "Whether the full match should be drawn as well as the auto", false)
-    ) { event ->
-        val hook = event.hook
-        event.deferReply().await()
-
-        val team = event.getOption("team")!!.asInt
-        val year = event.getOption("year")!!.asInt
-        val full = event.getOption("full")?.asBoolean == true
-        val eventObj = bot.theBlueAlliance.eventByName(event.getOption("event")!!.asString, year) ?: throw CommandException("Event not found!  Try another name for it")
-
-        val drawn = (if (full) bot.paths.renderMatches(team, year, eventObj.key) else bot.paths.renderAutos(team, year, eventObj.key)) ?: throw CommandException("No data found!")
-
-        hook.editOriginalEmbeds(Commands.embed("$team's ${if (full) "matches" else "autos"} at ${eventObj.shortName ?: eventObj.name}"))
-            .setFiles(FileUpload.fromData(drawn, "autos.png"))
-            .await()
-    }
-
-    bot.commands.autocomplete("zebra", "event") { value, event ->
-        val year = event.getOption("year")!!.asLong
-        val ev = bot.theBlueAlliance.autocompleteEventName(value, year.toInt())
-
-        return@autocomplete ev.map { Command.Choice(it, it) }
-    }
-
-    bot.commands.register(
-        slash("userinfo", "Gets info on a user")
-        .addOption(OptionType.USER, "user", "The user to get the information on", true)) { event ->
-        val user = event.getOption("user")!!.asUser
-        val member = event.getOption("user")!!.asMember
-
-        val fields = mutableListOf<MessageEmbed.Field>()
-        if (member != null) {
-            if (member.nickname != null) fields.add(MessageEmbed.Field("Nickname", member.nickname, false))
-            fields.add(MessageEmbed.Field("Permissions", member.permissions.joinToString(), false))
-            fields.add(MessageEmbed.Field("Server Join", "<t:${member.timeJoined.toInstant().epochSecond}>", false))
-        }
-
-        fields.add(MessageEmbed.Field("Account Creation", "<t:${user.timeCreated.toInstant().epochSecond}>", false))
-
-        event.replyEmbeds(Commands.embed(title = user.effectiveName, content = fields)).ephemeral().await()
-    }
-
-
-    bot.commands.register(
-        slash("math", "Evaluate arbitrary-precision math")
-        .addOption(OptionType.STRING, "expression", "The expression to evaluate", true)
-        .addOption(OptionType.INTEGER, "precision", "The precision")
-    ) { event ->
-        val exp = event.getOption("expression")!!.asString
-
-        val precision = (event.getOption("precision")?.asLong?.toInt() ?: Commands.DEF_CALCULATOR_PRECISION)
-            .coerceIn(Commands.MIN_CALCULATOR_PRECISION, Commands.MAX_CALCULATOR_PRECISION)
-
-        // User doesn't need to see an exception
-        @Suppress("SwallowedException", "TooGenericExceptionCaught")
-        try {
-            val result = InfixNotationParser(precision).parse(exp)
-            val mc = MathContext(precision - 1, RoundingMode.HALF_UP)
-            event.replyEmbeds(Commands.embed("Result", description = "$exp = ${result.round(mc).toPlainString()}")).await()
-        } catch (e: Exception) {
-            throw CommandException("Failed to evaluate '$exp'!")
         }
     }
 
@@ -314,7 +240,7 @@ fun registerUtilityCommands(bot: Bot) {
             u.reminders.map { it.text }
         }.sortedBy { biasedLevenshteinInsensitive(it, value) }
 
-        reminders.take(25).map { Command.Choice(it, it) }
+        reminders.take(25).map { Choice(it, it) }
     }
 
     // TODO better parsing
