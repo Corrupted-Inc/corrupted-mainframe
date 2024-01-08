@@ -7,6 +7,7 @@ import com.github.corruptedinc.corruptedmainframe.annotations.Param
 import com.github.corruptedinc.corruptedmainframe.commands.CommandException
 import com.github.corruptedinc.corruptedmainframe.commands.Commands
 import com.github.corruptedinc.corruptedmainframe.commands.ThrustCurve
+import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.math.InfixNotationParser
 import com.github.corruptedinc.corruptedmainframe.utils.*
 import dev.minn.jda.ktx.coroutines.await
@@ -20,6 +21,7 @@ import java.math.MathContext
 import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
 object Utility {
@@ -147,5 +149,26 @@ object Utility {
             )
         }
         event.replyEmbeds(builder.build()).await()
+    }
+
+    @Command("invite", "Get an invite link to the bot")
+    suspend inline fun CmdCtx.invite() {
+        event.replyEmbeds(embed("Invite Link", description = "Admin invite: ${Commands.adminInvite(bot.jda.selfUser.id)}\nBasic permissions: ${Commands.basicInvite(bot.jda.selfUser.id)}")).ephemeral().await()
+    }
+
+    @Command("timezone", "Set your timezone (used for reminders)")
+    suspend inline fun CmdCtx.timezone(@P("timezone", "Your timezone") name: String) {
+        @Suppress("TooGenericExceptionCaught", "SwallowedException")
+        val zone = try {
+            ZoneId.of(name).id
+        } catch (e: Exception /*no multi-catch...*/) {
+            throw CommandException("Couldn't parse a valid time zone!  " +
+                    "Make sure you specify it in [tz database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) format")
+        }
+        bot.database.trnsctn {
+            val user = event.user.m
+            user.timezone = zone
+        }
+        event.replyEmbeds(Commands.embed("Set your timezone to $zone")).ephemeral().await()
     }
 }

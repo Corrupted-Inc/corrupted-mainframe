@@ -242,25 +242,4 @@ fun registerUtilityCommands(bot: Bot) {
 
         reminders.take(25).map { Choice(it, it) }
     }
-
-    // TODO better parsing
-    bot.commands.register(
-        slash(
-            "timezone",
-            "Set your timezone (used for reminders)"
-        )
-        .addOption(OptionType.STRING, "zone", "Your timezone", true)) { event ->
-        @Suppress("TooGenericExceptionCaught", "SwallowedException")
-        val zone = try {
-            ZoneId.of(event.getOption("zone")!!.asString).id
-        } catch (e: Exception /*no multi-catch...*/) {
-            throw CommandException("Couldn't parse a valid time zone!  " +
-                    "Make sure you specify it in [tz database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) format")
-        }
-        bot.database.trnsctn {
-            val user = event.user.m
-            user.timezone = zone
-        }
-        event.replyEmbeds(Commands.embed("Set your timezone to $zone")).ephemeral().await()
-    }
 }

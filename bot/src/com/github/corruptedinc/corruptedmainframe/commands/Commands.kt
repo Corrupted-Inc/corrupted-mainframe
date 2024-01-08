@@ -238,19 +238,9 @@ class Commands(val bot: Bot) {
 
     @Suppress("ComplexMethod", "LongMethod", "ThrowsCount")
     fun registerAll() {
-        register(slash("invite", "Invite Link")) {
-            it.replyEmbeds(embed("Invite Link",
-                description = "[Admin invite](${adminInvite(bot.jda.selfUser.id)})\n" +
-                              "[Basic permissions](${basicInvite(bot.jda.selfUser.id)})"
-            )).await()
-        }
-
 //        registerAudioCommands(bot, this)
         registerCommands(bot)
         registerUtilityCommands(bot)
-        bot.apply {
-            bot.fights.registerCommands()
-        }
         bot.leveling.registerCommands()
 
         bot.onReady {
