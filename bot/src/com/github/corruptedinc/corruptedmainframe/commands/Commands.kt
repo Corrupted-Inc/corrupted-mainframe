@@ -240,7 +240,6 @@ class Commands(val bot: Bot) {
     fun registerAll() {
 //        registerAudioCommands(bot, this)
         registerCommands(bot)
-        registerUtilityCommands(bot)
         bot.leveling.registerCommands()
 
         bot.onReady {
