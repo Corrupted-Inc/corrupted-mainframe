@@ -1,11 +1,8 @@
 package com.github.corruptedinc.corruptedmainframe.discord
 
 import com.github.corruptedinc.corruptedmainframe.Config
-import com.github.corruptedinc.corruptedmainframe.commands.Commands
+import com.github.corruptedinc.corruptedmainframe.commands.*
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.embed
-import com.github.corruptedinc.corruptedmainframe.commands.Leveling
-import com.github.corruptedinc.corruptedmainframe.commands.RobotPaths
-import com.github.corruptedinc.corruptedmainframe.commands.TheBlueAlliance
 import com.github.corruptedinc.corruptedmainframe.commands.fights.Fights
 import com.github.corruptedinc.corruptedmainframe.commands.newcommands.Administration
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
@@ -45,7 +42,7 @@ class Bot(val config: Config) {
         // Specify the intents we need
         // Note the absence of the PRESENCE intent; this vastly reduces traffic to the bot
         GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MESSAGE_REACTIONS,
-        GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES, GatewayIntent.GUILD_EMOJIS_AND_STICKERS,
+        GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.DIRECT_MESSAGES, GatewayIntent.GUILD_EXPRESSIONS,
         GatewayIntent.MESSAGE_CONTENT /* for starboard */)
         .disableCache(CacheFlag.ACTIVITY, CacheFlag.CLIENT_STATUS, CacheFlag.ONLINE_STATUS)  // disable unneeded cache flags to improve performance
         // Add JDA KTX to the mix, which allows for some coroutine-related niceties
@@ -91,6 +88,8 @@ class Bot(val config: Config) {
             log.info("Logged in as ${event.jda.selfUser.name}")
 
             updateActivity()
+
+            Administration.launchListeners(this@Bot)
 
             // TODO: figure out a better way to do this than just doing a query every second
             scope.launch {

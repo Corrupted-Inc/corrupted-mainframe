@@ -93,6 +93,7 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         val fightCooldown = duration("fight_cooldown").default(Duration.of(5, ChronoUnit.MINUTES))
         val botBuild = long("bot_build").default(0)
         val modChannel = long("mod_channel").nullable().default(null)
+        val deafenRole = long("deafen_role").nullable()
 
         // deprecated, to be removed
         val starboardChannel = long("starboard_channel").nullable()
@@ -114,6 +115,7 @@ class ExposedDatabase(val db: Database, bot: Bot) {
         var fightCooldown by GuildMs.fightCooldown
         var botBuild by GuildMs.botBuild
         var modChannel by GuildMs.modChannel
+        var deafenRole by GuildMs.deafenRole
 //        val starredMessages by StarredMessage.referrersOn(StarredMessages.guild)
         val crawlJobs by ImageHashJob.referrersOn(ImageHashJobs.guild)
         val autoRoles by ModerationDB.AutoRoleMessage.referrersOn(ModerationDB.AutoRoleMessages.guild)

@@ -2,7 +2,6 @@ package com.github.corruptedinc.corruptedmainframe.utils
 
 import com.github.corruptedinc.corruptedmainframe.commands.CommandException
 import com.github.corruptedinc.corruptedmainframe.commands.Commands.Companion.stripPings
-import com.github.corruptedinc.corruptedmainframe.commands.newcommands.Administration.admin
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB
 import com.github.corruptedinc.corruptedmainframe.core.db.ModerationDB.AuditableAction.*
@@ -13,14 +12,14 @@ import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.User
 import net.dv8tion.jda.api.entities.channel.middleman.GuildChannel
-import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
+import net.dv8tion.jda.api.interactions.commands.CommandInteraction
 import org.jetbrains.exposed.sql.Transaction
 import org.jetbrains.exposed.sql.statements.api.ExposedBlob
 import java.awt.Color
 import java.time.Instant
 import java.time.temporal.TemporalAccessor
 
-data class CommandContext(val bot: Bot, val event: SlashCommandInteractionEvent) {
+data class CommandContext(val bot: Bot, val event: CommandInteraction) {
     @Suppress("LongParameterList")  // They've got default arguments
     fun embed(
         title: String,

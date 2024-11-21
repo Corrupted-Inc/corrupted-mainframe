@@ -3,13 +3,18 @@ package com.github.corruptedinc.corruptedmainframe.commands
 import com.beust.klaxon.*
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.LoadingCache
+import com.github.corruptedinc.corruptedmainframe.Config
 import com.github.corruptedinc.corruptedmainframe.utils.levenshtein
 import kotlinx.coroutines.*
 import org.apache.hc.client5.http.classic.methods.HttpGet
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder
+import java.io.File
 import java.net.URI
 import java.util.concurrent.TimeUnit
+import kotlin.math.absoluteValue
 import kotlin.math.max
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 // TODO: coroutines
 class TheBlueAlliance(private val token: String, private val scope: CoroutineScope) {
@@ -348,13 +353,34 @@ class TheBlueAlliance(private val token: String, private val scope: CoroutineSco
             val xs: List<Double?>,
             val ys: List<Double?>
         )
+
+        fun speeds(team: ZebraTeam) = times.zip(team.xs.filterNotNull().zip(team.ys.filterNotNull())).zipWithNext().map { (prev, current) -> (sqrt((current.second.first - prev.second.first).pow(2) + (current.second.second - prev.second.second).pow(2))) / (current.first - prev.first) }
+
+        fun accelerations(team: ZebraTeam) = times.zip(speeds(team)).zipWithNext().map { (prev, current) -> (current.second - prev.second).absoluteValue / (current.first - prev.first) }
     }
 
     fun zebra(match: Match) = get<Zebra>("/match/${match.key}/zebra_motionworks")
 }
 
 fun main() {
-    val token = "c4kw9EURg7Hl3fJ9IUZ1exk4eA5p876Z3wj6zOYbqPalGqUSA94mnGxraj8ZOrFq"
-    val tba = TheBlueAlliance(token, CoroutineScope(Dispatchers.Default))
-    println(tba.simpleEvent("2023orore"))
+    val config = Config.load(File("config.json"))!!
+    val tba = TheBlueAlliance(config.blueAllianceToken, CoroutineScope(Dispatchers.Default))
+    val match = tba.matches(2910, "2023pncmp")!!.find { it.key == "2023pncmp_qm50" }!!
+    val data = tba.zebra(match)!!
+//    println("data: $data")
+    val v = data.alliances.blue[1]
+    val speeds = data.speeds(v)
+    println("team: ${v.teamKey}")
+    println("speeds: $speeds")
+    println("Speeds:")
+    println("min: ${speeds.min()} avg: ${speeds.average()} median: ${speeds.sorted()[speeds.size / 2]} max: ${speeds.max()}")
+
+    val accelerations = data.accelerations(v)
+    println("accelerations: ${accelerations.joinToString { "%.4f".format(it) }}")
+    println("Accelerations:")
+    println("min: ${accelerations.min()} avg: ${accelerations.average()} median: ${accelerations.sorted()[accelerations.size / 2]} max: ${accelerations.max()}")
+
+    println(data.times)
+
+//    println(tba.simpleEvent("2023orore"))
 }

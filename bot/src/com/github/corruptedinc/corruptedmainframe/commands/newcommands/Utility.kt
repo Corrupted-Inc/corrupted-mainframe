@@ -298,6 +298,8 @@ object Utility {
 
             if (name == "all") throw CommandException("Name cannot be 'all'!")
 
+            if (event.channel == null) throw CommandException("Must be run in a channel!")
+
             val zone = bot.database.trnsctn { event.user.m.timezone }
 
             val parser = PrettyTimeParser(TimeZone.getTimeZone(ZoneId.of(zone)))
@@ -324,7 +326,7 @@ object Utility {
                     text = name
                     time = LocalDateTime.ofInstant(instant, ZoneOffset.UTC)
                     this.user = user
-                    channelId = event.channel.idLong
+                    channelId = event.channel!!.idLong
                 }
             }
 

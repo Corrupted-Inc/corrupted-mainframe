@@ -6,6 +6,7 @@ import com.github.corruptedinc.corruptedmainframe.commands.newcommands.Administr
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.VARCHAR_MAX_LENGTH
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.utils.CmdCtx
+import com.github.corruptedinc.corruptedmainframe.utils.toHumanReadable
 import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.User
@@ -88,7 +89,8 @@ class ModerationDB(private val database: ExposedDatabase) {
     }
 
     enum class LogType {
-        KICK, BAN, UNBAN, TIMEOUT, UNTIMEOUT, WARN, UNWARN, NOTE
+        // DO NOT REMOVE OR REORDER ANY OF THESE FOR ANY REASON
+        KICK, BAN, UNBAN, TIMEOUT, UNTIMEOUT, WARN, UNWARN, NOTE, DEAFEN, UNDEAFEN
     }
 
     object UserLogs : LongIdTable(name = "user_logs") {
@@ -103,6 +105,8 @@ class ModerationDB(private val database: ExposedDatabase) {
 
         val warnExpired = bool("warn_expired").default(false).index()
         val warnExpiry = timestamp("warn_expiry").nullable()
+
+        val punishmentExpired = bool("punishment_expired").default(true).index()
 
         context(Transaction)
         fun createIndex() {
@@ -195,6 +199,41 @@ class ModerationDB(private val database: ExposedDatabase) {
         }
 
         context(Transaction, ExposedDatabase, CmdCtx)
+        fun logDeafen(victim: User, guild: Guild, admin: User, duration: Duration, reason: String, timestamp: Instant = Instant.now()) {
+            val log = UserLog.new {
+                this.user = victim.m
+                this.guild = guild.m
+                this.timestamp = timestamp
+                this.type = LogType.DEAFEN.ordinal
+                this.admin = admin.m
+                this.punishmentDuration = duration.toJavaDuration()
+                this.warnExpired = true
+                this.warnExpiry = null
+                this.warnLevel = null
+                this.reason = reason
+                this.punishmentExpired = false
+            }
+            auditLog(AuditableAction.GUILDLOGGED_ACTION, AuditableAction.GuildLoggedActionL(log.id.value))
+        }
+
+        context(Transaction, ExposedDatabase, CmdCtx)
+        fun logUndeafen(victim: User, guild: Guild, admin: User, reason: String, timestamp: Instant = Instant.now()) {
+            val log = UserLog.new {
+                this.user = victim.m
+                this.guild = guild.m
+                this.timestamp = timestamp
+                this.type = LogType.UNDEAFEN.ordinal
+                this.admin = admin.m
+                this.punishmentDuration = null
+                this.warnExpired = true
+                this.warnExpiry = null
+                this.warnLevel = null
+                this.reason = reason
+            }
+            auditLog(AuditableAction.GUILDLOGGED_ACTION, AuditableAction.GuildLoggedActionL(log.id.value))
+        }
+
+        context(Transaction, ExposedDatabase, CmdCtx)
         fun logNote(victim: User, guild: Guild, admin: User, note: String, timestamp: Instant = Instant.now()) {
             val log = UserLog.new {
                 this.user = victim.m
@@ -224,6 +263,7 @@ class ModerationDB(private val database: ExposedDatabase) {
         var warnExpired        by UserLogs.warnExpired
         var warnExpiry         by UserLogs.warnExpiry
         var punishmentDuration by UserLogs.punishmentDuration
+        var punishmentExpired  by UserLogs.punishmentExpired
 
         fun format() = when (LogType.entries[type]) {
                 LogType.KICK -> "<t:${timestamp.epochSecond}> Kicked by <@${admin?.discordId}> for reason $reason"
@@ -234,6 +274,8 @@ class ModerationDB(private val database: ExposedDatabase) {
                 LogType.WARN -> "<t:${timestamp.epochSecond}> Warned by <@${admin?.discordId}> (now at level $warnLevel) for reason $reason"
                 LogType.UNWARN -> "<t:${timestamp.epochSecond}> Unwarned by <@${admin?.discordId}> (now at level $warnLevel) for reason $reason"
                 LogType.NOTE -> "<t:${timestamp.epochSecond}> <@${admin?.discordId}> added a note: $reason"
+                LogType.DEAFEN -> "<t:${timestamp.epochSecond}> Deafened by <@${admin?.discordId}> for ${punishmentDuration?.toHumanReadable()} for reason $reason"
+                LogType.UNDEAFEN -> "<t:${timestamp.epochSecond}> Undeafened by <@${admin?.discordId}> for reason $reason"
             }
     }
 

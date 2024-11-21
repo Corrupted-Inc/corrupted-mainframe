@@ -21,19 +21,13 @@ import net.dv8tion.jda.api.exceptions.ErrorResponseException
 import net.dv8tion.jda.api.exceptions.PermissionException
 import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.commands.CommandInteraction
-import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.SlashCommandInteraction
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
-import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
 import net.dv8tion.jda.api.interactions.commands.context.MessageContextInteraction
 import net.dv8tion.jda.api.interactions.commands.context.UserContextInteraction
-import net.dv8tion.jda.internal.interactions.CommandDataImpl
 import java.awt.Color
 import java.time.*
-import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAccessor
-import kotlin.random.Random
-import kotlin.time.toKotlinDuration
 
 class Commands(val bot: Bot) {
 

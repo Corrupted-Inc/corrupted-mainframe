@@ -111,6 +111,35 @@ class Fights {
             return pts * levelMultiplier
         }
 
+        @Command("fight", "Fight another user")
+        suspend inline fun CmdCtx.fight(@P("user", "The user to fight") target: net.dv8tion.jda.api.entities.User) {
+            val attacker = event.member!!
+            val user = event.guild!!.retrieveMember(target).await()
+
+            if (user == attacker) throw CommandException("You can't fight yourself!")
+
+            val guild = event.guild!!
+//            if (bot.leveling.level(attacker.user, guild) > bot.leveling.level(user.user, guild) + 5.0 && user.idLong != bot.jda.selfUser.idLong)
+//                throw CommandException("Can't fight someone more than 5 levels lower than you!")
+
+            bot.database.trnsctn {
+                val u = attacker.user.m
+                val g = guild.m
+                val pts =
+                    ExposedDatabase.Point.find { (ExposedDatabase.Points.user eq u.id) and (ExposedDatabase.Points.guild eq g.id) }
+                        .first()
+                val cooldown = pts.fightCooldown.plus(g.fightCooldown)
+                val now = Instant.now()
+                if (cooldown.isAfter(now)) {
+                    throw CommandException("Can't fight again until <t:${cooldown.epochSecond}> (<t:${cooldown.epochSecond}:R>)!")
+                }
+
+                pts.fightCooldown = now
+            }
+            val seed = bot.fights.r.nextLong()
+            this.run { bot.fights.sendFight(bot, event, attacker.user, user.user, guild, seed) }
+        }
+
         @JvmStatic
         fun main(args: Array<String>) {
             Fights().blah()
@@ -159,7 +188,7 @@ class Fights {
             delay(1000L)
 
             str.appendLine(when (item) {
-                is FightEvent.AttackEvent -> item.attack.string("<@${item.attacker.discordID}>", "<@${item.victim.discordID}>", fight.rand) + " (${if (item.damage.isInfinite()) "999999999" else item.damage.roundToLong().toString()} damage)"
+                is FightEvent.AttackEvent -> item.attack.string("<@${item.attacker.discordID}>", "<@${item.victim.discordID}>", fight.rand) + " (${if (item.damage.isInfinite()) "instakill" else "${item.damage.roundToLong()} damage"})"
                 is FightEvent.WinEvent -> "**<@${item.winner.discordID}> won, gaining ${item.winnerXPGain.roundToLong()} XP!  <@${item.loser.discordID}> lost, but gained ${item.loserXPGain.roundToLong()} XP.**"
                 is FightEvent.TieEvent -> "**Tie!  Both parties gain ${item.xpGain.roundToLong()} XP!**"
             })
@@ -183,33 +212,5 @@ class Fights {
         if (!b2) {
             bot.leveling.addPoints(bot.jda.getUserById(victimID)!!, victimXPGain, bot.jda.getTextChannelById(channelID)!!)
         }
-    }
-
-    @Command("fight", "Fight another user")
-    suspend inline fun CmdCtx.fight(@P("user", "The user to fight") user: Member) {
-        val attacker = event.member!!
-
-        if (user == attacker) throw CommandException("You can't fight yourself!")
-
-        val guild = event.guild!!
-//            if (bot.leveling.level(attacker.user, guild) > bot.leveling.level(user.user, guild) + 5.0 && user.idLong != bot.jda.selfUser.idLong)
-//                throw CommandException("Can't fight someone more than 5 levels lower than you!")
-
-        bot.database.trnsctn {
-            val u = attacker.user.m
-            val g = guild.m
-            val pts =
-                ExposedDatabase.Point.find { (ExposedDatabase.Points.user eq u.id) and (ExposedDatabase.Points.guild eq g.id) }
-                    .first()
-            val cooldown = pts.fightCooldown.plus(g.fightCooldown)
-            val now = Instant.now()
-            if (cooldown.isAfter(now)) {
-                throw CommandException("Can't fight again until <t:${cooldown.epochSecond}> (<t:${cooldown.epochSecond}:R>)!")
-            }
-
-            pts.fightCooldown = now
-        }
-        val seed = r.nextLong()
-        this.run { bot.fights.sendFight(bot, event, attacker.user, user.user, guild, seed) }
     }
 }

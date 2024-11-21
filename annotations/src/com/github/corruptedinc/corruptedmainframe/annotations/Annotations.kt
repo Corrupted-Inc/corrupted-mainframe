@@ -14,6 +14,10 @@ annotation class Param(val name: String = "", val description: String)
 
 typealias P = Param
 
+// support hasn't made it into JDA quite yet, see https://github.com/discord-jda/JDA/pull/2633
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.CLASS)
+annotation class UserInstallable
+
 @Target(AnnotationTarget.FUNCTION)
 @Repeatable
 annotation class Autocomplete(val path: String)

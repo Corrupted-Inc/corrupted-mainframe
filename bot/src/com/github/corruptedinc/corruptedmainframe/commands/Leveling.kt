@@ -14,13 +14,9 @@ import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.*
 import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
-import net.dv8tion.jda.api.interactions.commands.OptionType
-import net.dv8tion.jda.api.interactions.commands.build.Commands.slash
 import net.dv8tion.jda.api.interactions.commands.build.Commands.user
 import org.intellij.lang.annotations.Language
-import org.jetbrains.exposed.sql.IColumnType
-import org.jetbrains.exposed.sql.LongColumnType
-import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.*
 import kotlin.math.*
 
 @Suppress("MagicNumber")
@@ -31,7 +27,103 @@ class Leveling(private val bot: Bot) {
 
         fun fightPoints(level: Double, zeroToOne: Double) = ((10 * (level + 2).pow(0.25) + 10) * zeroToOne) + 5
 
-        // TODO: move some other methods here as well
+        @Command("level", "Gets your current level")
+        suspend inline fun CmdCtx.levelCommand(@P("user", "The user to get the level of") target: User?) {
+            val user = target ?: event.user
+            val xp = bot.leveling.points(user, event.guild!!)
+            val level = bot.leveling.pointsToLevel(xp)
+            val levelStartXP = bot.leveling.levelToPoints(floor(level))
+            val levelEndXP = bot.leveling.levelToPoints(ceil(level))
+
+            val portion = (xp - levelStartXP) / (levelEndXP - levelStartXP)
+
+            val parts = " ▏▎▍▌▋▊▉█"
+            val blocks = LEVEL_BAR_WIDTH * portion
+            @Suppress("MagicNumber")
+            val out = (parts.last().toString().repeat(blocks.toInt()) +
+                    parts[((blocks - blocks.toInt().toDouble()) * 8).toInt()]).padEnd(LEVEL_BAR_WIDTH, ' ')
+
+            val start = levelStartXP.toInt().coerceAtLeast(0).toString()
+            val end = levelEndXP.toInt().toString()
+
+            event.replyEmbeds(
+                Commands.embed(
+                    "Level ${level.toInt()}", description = "${user.asMention} has " +
+                            "${xp.toInt()} points\nonly ${(levelEndXP - xp).roundToInt()} points to " +
+                            "go until level ${level.toInt() + 1}!\n" +
+                            "`" + start.padEnd(LEVEL_BAR_WIDTH + 2 - end.length, ' ') + end + "`\n" +
+                            "`|$out|`",
+                    thumbnail = user.effectiveAvatarUrl,
+                    stripPings = false
+                )
+            ).await()
+        }
+
+        @Command("levelnotifs", "Enable or disable level notifications")
+        suspend inline fun CmdCtx.levelNotifs(@P("enabled", "If level notifications should be shown") enabled: Boolean, @P("guild", "If this is setting for the whole guild or just your user") guild: Boolean) {
+            if (guild) {
+                bot.commands.assertPermissions(event, Permission.ADMINISTRATOR)
+                bot.database.trnsctn {
+                    event.guild!!.m.levelsEnabled = enabled
+                }
+                event.replyEmbeds(Commands.embed("Successfully ${if (enabled) "enabled" else "disabled"} guild level notifications")).await()
+            } else {
+                bot.database.setPopups(event.user, event.guild ?: throw CommandException("This command must be run in a server!"), enabled)
+                event.replyEmbeds(Commands.embed("Set level popups to $enabled")).await()
+            }
+        }
+
+        @Command("leaderboard", "Show the guild leaderboard")
+        suspend inline fun CmdCtx.leaderboard() {
+            @Language("sql") val rankStatement = """
+            UPDATE points SET rank = RankTable.rank 
+            FROM (SELECT id, DENSE_RANK() OVER(ORDER BY points DESC, id) 
+            AS rank FROM points WHERE guild = ?) AS RankTable WHERE RankTable.id = points.id""".trimIndent()
+            bot.database.trnsctn {
+                val g = event.guild!!.m
+                // yes, I'm aware this is awful, but because it must be an integer and isn't user provided it's safe
+                // if it was user provided I would have put more effort into a prepared statement
+                exec(rankStatement.replace("?", g.id.value.toString()))
+            }
+//            connection.prepareStatement(rankStatement, false)
+//            // update rank column
+//            bot.database.trnsctn {
+//                val g = event.guild!!.m
+//                bot.leveling.rankStatementPrepared.fillParameters(listOf(LongColumnType() to g.id.value))
+//                bot.leveling.rankStatementPrepared.executeQuery()
+//            }
+
+            val guildid = event.guild!!.idLong
+
+            val area = { start: Long, end: Long ->
+                val idsRanksPoints = bot.database.trnsctn {
+                    val g = bot.database.guild(guildid).id
+                    // TODO: add secondary sort column somehow
+                    val items = ExposedDatabase.Point.find { (ExposedDatabase.Points.guild eq g) and (ExposedDatabase.Points.rank greaterEq start) and (ExposedDatabase.Points.rank less end) }.limit(30)
+                        .sortedByDescending { it.points }
+
+                    items.map { Triple(it.user.discordId, it.rank, it.points.roundToLong()) }
+                }
+
+                val g = bot.jda.getGuildById(guildid)!!
+
+                val rankCol = Col(Align.RIGHT, *(arrayOf("Rank") + idsRanksPoints.map { it.second.toString() }))
+                val nameCol = Col(Align.LEFT, *(arrayOf("Name") + idsRanksPoints.map { g.getMemberById(it.first)?.effectiveName ?: "bug" }))
+                val pntsCol = Col(Align.LEFT, *(arrayOf("Points") + idsRanksPoints.map { it.third.toString() }))
+
+                Commands.embed(
+                    "Leaderboard $start - $end",
+                    description = "```" + table(rankCol, nameCol, pntsCol) + "```"
+                )
+            }
+
+            val perMessage = 15
+            val size = event.guild!!.memberCount / perMessage  // todo: dejankify
+
+            event.replyLambdaPaginator(size.toLong()) { v ->
+                area(v * perMessage, (v + 1) * perMessage)
+            }.await()
+        }
     }
 
     init {
@@ -44,6 +136,13 @@ class Leveling(private val bot: Bot) {
             }
         }
     }
+//    val rankStatementPrepared = bot.database.trnsctn {
+//        @Language("sql") val rankStatement = """
+//            UPDATE points SET rank = RankTable.rank
+//            FROM (SELECT id, DENSE_RANK() OVER(ORDER BY points DESC, id)
+//            AS rank FROM points WHERE guild = ?) AS RankTable WHERE RankTable.id = points.id""".trimIndent()
+//        connection.prepareStatement(rankStatement, false)
+//    }
 
     fun pointsToLevel(points: Double) = ln((points + 60) / 10).sq() - 3
 
@@ -66,6 +165,7 @@ class Leveling(private val bot: Bot) {
             val level = level(user, channel.guild).toInt()
             if (level > previousLevel && bot.database.popups(user, channel.guild)) {
                 if (!bot.database.trnsctn { channel.guild.m.levelsEnabled }) return
+                // TODO: remove
                 channel.sendMessageEmbeds(
                     embed(
                         "Level Up",
@@ -82,101 +182,6 @@ class Leveling(private val bot: Bot) {
         }
     }
 
-    @Command("level", "Gets your current level")
-    suspend inline fun CmdCtx.levelCommand(@P("user", "The user to get the level of") target: User?) {
-        val user = target ?: event.user
-        val xp = bot.leveling.points(user, event.guild!!)
-        val level = bot.leveling.pointsToLevel(xp)
-        val levelStartXP = bot.leveling.levelToPoints(floor(level))
-        val levelEndXP = bot.leveling.levelToPoints(ceil(level))
-
-        val portion = (xp - levelStartXP) / (levelEndXP - levelStartXP)
-
-        val parts = " ▏▎▍▌▋▊▉█"
-        val blocks = LEVEL_BAR_WIDTH * portion
-        @Suppress("MagicNumber")
-        val out = (parts.last().toString().repeat(blocks.toInt()) +
-                parts[((blocks - blocks.toInt().toDouble()) * 8).toInt()]).padEnd(LEVEL_BAR_WIDTH, ' ')
-
-        val start = levelStartXP.toInt().coerceAtLeast(0).toString()
-        val end = levelEndXP.toInt().toString()
-
-        event.replyEmbeds(
-            Commands.embed(
-                "Level ${level.toInt()}", description = "${user.asMention} has " +
-                        "${xp.toInt()} points\nonly ${(levelEndXP - xp).roundToInt()} points to " +
-                        "go until level ${level.toInt() + 1}!\n" +
-                        "`" + start.padEnd(LEVEL_BAR_WIDTH + 2 - end.length, ' ') + end + "`\n" +
-                        "`|$out|`",
-                thumbnail = user.effectiveAvatarUrl,
-                stripPings = false
-            )
-        ).await()
-    }
-
-    @Command("levelnotifs", "Enable or disable level notifications")
-    suspend inline fun CmdCtx.levelNotifs(@P("enabled", "If level notifications should be shown") enabled: Boolean, @P("guild", "If this is setting for the whole guild or just your user") guild: Boolean) {
-        if (guild) {
-            bot.commands.assertPermissions(event, Permission.ADMINISTRATOR)
-            bot.database.trnsctn {
-                event.guild!!.m.levelsEnabled = enabled
-            }
-            event.replyEmbeds(Commands.embed("Successfully ${if (enabled) "enabled" else "disabled"} guild level notifications")).await()
-        } else {
-            bot.database.setPopups(event.user, event.guild ?: throw CommandException("This command must be run in a server!"), enabled)
-            event.replyEmbeds(Commands.embed("Set level popups to $enabled")).await()
-        }
-    }
-
-    val rankStatementPrepared = bot.database.trnsctn {
-        @Language("sql") val rankStatement = """
-            UPDATE points SET rank = RankTable.rank 
-            FROM (SELECT id, DENSE_RANK() OVER(ORDER BY points DESC, id) 
-            AS rank FROM points WHERE guild = ?) AS RankTable WHERE RankTable.id = points.id""".trimIndent()
-        connection.prepareStatement(rankStatement, false)
-    }
-
-    @Command("leaderboard", "Show the guild leaderboard")
-    suspend inline fun CmdCtx.leaderboard() {
-        // update rank column
-        bot.database.trnsctn {
-            val g = event.guild!!.m
-            rankStatementPrepared.fillParameters(listOf(LongColumnType() to g.id.value))
-            rankStatementPrepared.executeQuery()
-        }
-
-        val guildid = event.guild!!.idLong
-
-        val area = { start: Long, end: Long ->
-            val idsRanksPoints = bot.database.trnsctn {
-                val g = bot.database.guild(guildid).id
-                // TODO: add secondary sort column somehow
-                val items = ExposedDatabase.Point.find { (ExposedDatabase.Points.guild eq g) and (ExposedDatabase.Points.rank greaterEq start) and (ExposedDatabase.Points.rank less end) }.limit(30)
-                    .sortedByDescending { it.points }
-
-                items.map { Triple(it.user.discordId, it.rank, it.points.roundToLong()) }
-            }
-
-            val g = bot.jda.getGuildById(guildid)!!
-
-            val rankCol = Col(Align.RIGHT, *(arrayOf("Rank") + idsRanksPoints.map { it.second.toString() }))
-            val nameCol = Col(Align.LEFT, *(arrayOf("Name") + idsRanksPoints.map { g.getMemberById(it.first)?.effectiveName ?: "bug" }))
-            val pntsCol = Col(Align.LEFT, *(arrayOf("Points") + idsRanksPoints.map { it.third.toString() }))
-
-            Commands.embed(
-                "Leaderboard $start - $end",
-                description = "```" + table(rankCol, nameCol, pntsCol) + "```"
-            )
-        }
-
-        val perMessage = 15
-        val size = event.guild!!.memberCount / perMessage  // todo: dejankify
-
-        event.replyLambdaPaginator(size.toLong()) { v ->
-            area(v * perMessage, (v + 1) * perMessage)
-        }.await()
-    }
-
     fun registerCommands() {
         bot.commands.registerUser(user("level")) { event ->
             val user = event.targetMember!!.user
@@ -187,11 +192,12 @@ class Leveling(private val bot: Bot) {
 
             val portion = (xp - levelStartXP) / (levelEndXP - levelStartXP)
 
-            val parts = " ▏▎▍▌▋▊▉█"
-            val blocks = LEVEL_BAR_WIDTH * portion
-            @Suppress("MagicNumber")
-            val out = (parts.last().toString().repeat(blocks.toInt()) +
-                    parts[((blocks - blocks.toInt().toDouble()) * 8).toInt()]).padEnd(LEVEL_BAR_WIDTH, ' ')
+//            val parts = " ▏▎▍▌▋▊▉█"
+//            val blocks = LEVEL_BAR_WIDTH * portion
+//            @Suppress("MagicNumber")
+//            val out = (parts.last().toString().repeat(blocks.toInt()) +
+//                    parts[((blocks - blocks.toInt().toDouble()) * 8).toInt()]).padEnd(LEVEL_BAR_WIDTH, ' ')
+            val out = bar(portion, LEVEL_BAR_WIDTH)
 
             val start = levelStartXP.toInt().coerceAtLeast(0).toString()
             val end = levelEndXP.toInt().toString()

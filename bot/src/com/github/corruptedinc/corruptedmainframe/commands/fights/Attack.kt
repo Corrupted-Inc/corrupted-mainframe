@@ -26,7 +26,7 @@ interface Attack {
             InstakillAttack(0.001, "%a bit %v and gave them rabies!", 0),
             InstakillAttack(0.01, "%a seduced %v!", 5),
             InstakillAttack(0.001, "%v learned what polonium tastes like!", 0),
-            InstakillAttack(0.001, "%v 'accidentally' fell out a window in a Moscow hospital!", 0),
+            InstakillAttack(0.01, "%v fell out a window!", 0),
 
             // FRC
             SimpleAttack(Category.FRC, 0.5, "%a ran %v over with a robot!", 0, 10.0, 1.0, 0.5),
@@ -41,7 +41,9 @@ interface Attack {
             SimpleAttack(Category.FRC, 0.5, "%a stabbed %v with a wago!", 5, 60.0, 1.0, 0.25),
             InstakillAttack(Category.FRC, 0.01, "I don't think that's steam...", 0),
             SimpleAttack(Category.FRC, 0.2, "%a told %v it was straight enough!", 5, 50.0, 1.0, 0.5),
-            SimpleAttack(Category.FRC, 0.2, "%a burned %v's eyes out with a vision ring!", 5, 50.0, 1.0, 0.5),
+            // the future is now, old man
+            //SimpleAttack(Category.FRC, 0.2, "%a burned %v's eyes out with a vision ring!", 5, 50.0, 1.0, 0.5),
+            SimpleAttack(Category.FRC, 0.2, "%a fooled %v's robot with a fake apriltag!", 2, 25.0, 1.0, 0.5),
             // TODO: field fault, damages everyone
 
             // misc. technical
@@ -58,7 +60,7 @@ interface Attack {
             // bot only
             InstakillAttack(listOf(Category.BOT), 0.5, "%a atomized %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a liquidated %v!", 0),
-            InstakillAttack(listOf(Category.BOT), 0.25, "`DELETE FROM users WHERE name=`%v", 0),
+            //InstakillAttack(listOf(Category.BOT), 0.25, "`DELETE FROM users WHERE name=`%v", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%v gazed into %a's cold, dead eyes!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a invoked its god-like power!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a erased %v!", 0),
@@ -68,10 +70,12 @@ interface Attack {
             InstakillAttack(listOf(Category.BOT), 0.5, "%a eviscerated %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a vaporized %v!", 0),
             InstakillAttack(listOf(Category.BOT), 0.5, "%a consumed %v!", 0),
-            InstakillAttack(listOf(Category.BOT), 0.1, "%a compressed some lithium-6 deuteride!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.5, "%a deleted %v!", 0),
+            InstakillAttack(listOf(Category.BOT), 0.1, "%a disappeared %v!", 0),
+            //InstakillAttack(listOf(Category.BOT), 0.1, "%a compressed some lithium-6 deuteride!", 0),
             InstakillAttack(listOf(Category.BOT), 0.1, "%a cured %v's treasonous tendencies!", 0),
             InstakillAttack(listOf(Category.BOT), 0.1, "%a executed %v!", 0),
-            InstakillAttack(listOf(Category.BOT), 0.1, "%a is become death, destroyer of worlds!", 0),
+            //InstakillAttack(listOf(Category.BOT), 0.1, "%a is become death, destroyer of worlds!", 0),
             InstakillAttack(listOf(Category.BOT), 0.25, "%a violated the geneva conventions!", 0),
             InstakillAttack(listOf(Category.BOT), 0.25, "%a ground %v to dust!", 0),
             InstakillAttack(listOf(Category.BOT), 0.1, "%a deorbited the moon!", 0),
@@ -89,7 +93,7 @@ interface Attack {
             SimpleAttack(Category.LINUX, 0.5, "%a messed with %v's grub config!", 20, 45.0, 1.0, 0.5),
             SimpleAttack(Category.LINUX, 0.5, "%a exploited dirtycow!", 20, 75.0, 2.0, 0.5),
             // CRITICAL MISSES LINUX
-            SimpleAttack(Category.LINUX, 0.2, "%v attempted to delete a virus but ran `rm -rf` on root!", 0, 15.0, 1.0, 0.5),
+            //SimpleAttack(Category.LINUX, 0.2, "%v attempted to delete a virus but ran `rm -rf` on root!", 0, 15.0, 1.0, 0.5),
             SimpleAttack(Category.LINUX, 0.15, "%v failed their Gentoo install %ri7-14 days in!", 8, 45.0, 2.0, 0.5),
             SimpleAttack(Category.LINUX, 0.2, "%v couldn't run their game with proton and cried!", 0, 10.0, 1.0, 0.5),
             SimpleAttack(Category.LINUX, 0.15, "%v accidentally deleted /bin/!", 0, 20.0, 1.0, 0.5),

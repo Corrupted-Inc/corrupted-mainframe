@@ -38,6 +38,7 @@ import kotlin.time.toKotlinDuration
 private const val MAX_PURGE = 1000
 private const val PURGE_DELAY = 2000L
 
+// TODO: move all of this to the new system
 fun registerCommands(bot: Bot) {
     bot.commands.register(
         slash("purge", "Purges messages")

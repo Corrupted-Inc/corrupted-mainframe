@@ -15,6 +15,7 @@ import dev.minn.jda.ktx.coroutines.await
 import dev.minn.jda.ktx.interactions.components.paginator
 import dev.minn.jda.ktx.interactions.components.replyPaginator
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.Guild.Ban
@@ -37,6 +38,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.ceil
 import kotlin.system.exitProcess
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.toJavaDuration
 
@@ -272,6 +274,8 @@ object Administration {
 
     @Command("auditlog", "Get the audit log for this guild")
     suspend inline fun CmdCtx.auditLog() {
+        // TODO: is this right??
+        assertAdmin()
         val perPage = 10
         val (pageCount, gid) = bot.database.trnsctn {
             assertBotAdmin()
@@ -455,7 +459,7 @@ object Administration {
                     ModerationDB.UserLog.find { not(ModerationDB.UserLogs.warnExpired) and (ModerationDB.UserLogs.warnExpiry lessEq Instant.now()) }
                         .map { Triple(it.id.value, it.user.discordId, Pair(it.guild.discordId, it.guild.modChannel)) }
                 }
-                for ((id, u, g) in toUnwarn) {
+                for ((_, u, g) in toUnwarn) {
                     val user = try { bot.jda.retrieveUserById(u).await() } catch (e: Throwable) { continue }  // if the user doesn't exist, skip it
                     val guild = bot.jda.getGuildById(g.first) ?: continue  // if it isn't in the guild anymore, skip it
                     val data = doUnWarn(bot, user, guild, null, "warn expired")
@@ -465,14 +469,14 @@ object Administration {
                         ch.sendMessageEmbeds(
                             embed(
                                 "Unwarned",
-                                description = "Unwarned ${user.asMention} (${user.name}) for reason warn expired\nNow at level ${data.punishment.level ?: 0}\nActions taken: ${data.actionTaken}\nCurrent warn level expires $expiry",
+                                description = "Unwarned ${user.asMention} (${user.name}) for reason warn expired\nNow at level ${data.punishment.level ?: 0}\nActions taken: ${data.actionTaken}\nCurrent warn level decreases $expiry",
                                 stripPings = false
                             )
                         ).await()
                     }
                 }
                 bot.database.trnsctn {
-                    for ((id, u, g) in toUnwarn) {
+                    for ((id, _, _) in toUnwarn) {
                         ModerationDB.UserLog[id].warnExpired = true
                     }
                 }
@@ -518,7 +522,7 @@ object Administration {
             if (newPunishment?.type == ModerationDB.PunishmentType.MUTE) {
                 // if they should be muted, mute them (TODO: check if already muted)
                 member.timeoutFor(newPunishment.duration!!).reason(reason).await()
-                actionsTaken.add("timed out")
+                actionsTaken.add("timed out for ${newPunishment.duration}")
             } else {
                 // if they shouldn't be muted, then check if they are.  If they are muted, unmute them
                 if (member.isTimedOut) {
@@ -585,7 +589,9 @@ object Administration {
                 val currentLevel = level(u, g)
                 val newLevel = currentLevel?.minus(1) ?: throw CommandException("User is not warned!")
 
-                val newPunishment = if (newLevel == 0) { null } else { g.warningTypes.find { it.index == newLevel } ?: throw CommandException("No warning level $newLevel found!") }
+                var newPunishment = if (newLevel == 0) { null } else { g.warningTypes.find { it.index == newLevel } ?: throw CommandException("No warning level $newLevel found!") }
+                // TODO: is this right?
+                newPunishment = null
 
                 // set all other active warnings as expired
                 ModerationDB.UserLog.find { (ModerationDB.UserLogs.user eq u.id) and (ModerationDB.UserLogs.guild eq g.id) and not(ModerationDB.UserLogs.warnExpired) }
@@ -762,13 +768,13 @@ object Administration {
         }
 
         @Command("timeout", "Times out a user")
-        suspend inline fun CmdCtx.timeout(@P("user", "The user to time out") victim: User, @P("reason", "The time out reason") reason: String, @P("days", "The number of days to mute for") days: Double, @P("publish", "If true, logs to the mod log channel") log: Boolean) {
+        suspend inline fun CmdCtx.timeout(@P("user", "The user to time out") victim: User, @P("reason", "The time out reason") reason: String, @P("hours", "The number of hours to mute for") hours: Double, @P("publish", "If true, logs to the mod log channel") log: Boolean) {
             assertPermissions(Permission.MODERATE_MEMBERS, channel = null)
 
             val member = event.guild!!.getMember(victim) ?: throw CommandException("User is not a member of this guild!")
             if (!event.guild!!.selfMember.hasPermission(Permission.MODERATE_MEMBERS) || !event.guild!!.selfMember.canInteract(member)) throw CommandException("Insufficient bot permissions!")
-            if (days !in 0.0..28.0) throw CommandException("Invalid duration!")
-            val duration = days.days
+            val duration = hours.hours
+            if (duration !in kotlin.time.Duration.ZERO..28.days) throw CommandException("Invalid duration!")
             member.timeoutFor(duration.toJavaDuration()).reason(reason).await()
             val channel = bot.database.trnsctn {
                 ModerationDB.UserLogs.logTimeout(victim, event.guild!!, event.user, duration, reason)
@@ -800,6 +806,77 @@ object Administration {
 
             if (log && channel != null) {
                 event.guild!!.getTextChannelById(channel)!!.sendMessageEmbeds(embed("Unmute", description = "Unmuted ${victim.asMention} for reason: $reason\n" +
+                        "Performed by ${event.user.asMention}", stripPings = false)).await()
+            }
+        }
+
+        @Command("deafen", "Deafens a user")
+        suspend inline fun CmdCtx.deafen(@P("user", "The user to deafen") victim: User, @P("reason", "The deafen reason") reason: String, @P("hours", "The number of hours to deafen for") hours: Double, @P("publish", "If true, logs to the mod log channel") log: Boolean) {
+            assertPermissions(Permission.MODERATE_MEMBERS, channel = null)
+
+            val member = event.guild!!.getMember(victim) ?: throw CommandException("User is not a member of this guild!")
+            if (!event.guild!!.selfMember.hasPermission(Permission.MODERATE_MEMBERS) || !event.guild!!.selfMember.canInteract(member)) throw CommandException("Insufficient bot permissions!")
+            val duration = hours.hours
+            if (duration !in kotlin.time.Duration.ZERO..28.days) throw CommandException("Invalid duration!")
+            val r = bot.database.trnsctn {
+                event.guild!!.m.deafenRole
+            } ?: throw CommandException("No guild deafen role configured!")
+
+            val role = event.guild!!.getRoleById(r) ?: throw CommandException("Deafen role does not exist!")
+
+            try {
+                event.guild!!.addRoleToMember(member, role).await()
+            } catch (_: Throwable) {
+                throw CommandException("Failed to add deafen role to member!")
+            }
+
+            val channel = bot.database.trnsctn {
+                ModerationDB.UserLogs.logDeafen(victim, event.guild!!, event.user, duration, reason)
+                event.guild!!.m.modChannel
+            }
+
+            event.replyEmbeds(embed("Deafened", description = "Deafened ${victim.asMention} for ${duration.inWholeHours} hours", stripPings = false)).ephemeral().await()
+
+            if (log && channel != null) {
+                event.guild!!.getTextChannelById(channel)!!.sendMessageEmbeds(embed("Deafened", description = "Deafened ${victim.asMention} for ${duration.inWholeHours} hours for reason: $reason\n" +
+                        "Performed by ${event.user.asMention}", stripPings = false)).await()
+            }
+        }
+
+        @Command("undeafen", "Undeafens a user")
+        suspend inline fun CmdCtx.undeafen(@P("user", "The user to undeafen") victim: User, @P("reason", "The undeafen reason") reason: String, @P("publish", "If true, logs to the mod log channel") log: Boolean) {
+            assertPermissions(Permission.MODERATE_MEMBERS, channel = null)
+
+            val member = event.guild!!.getMember(victim) ?: throw CommandException("User is not a member of this guild!")
+            if (!event.guild!!.selfMember.hasPermission(Permission.MODERATE_MEMBERS) || !event.guild!!.selfMember.canInteract(member)) throw CommandException("Insufficient bot permissions!")
+
+            val r = bot.database.trnsctn {
+                event.guild!!.m.deafenRole
+            } ?: throw CommandException("No guild deafen role configured!")
+
+            val role = event.guild!!.getRoleById(r) ?: throw CommandException("Deafen role does not exist!")
+
+            try {
+                if (member.roles.contains(role)) {
+                    event.guild!!.removeRoleFromMember(member, role).await()
+                }
+            } catch (_: Throwable) {
+                throw CommandException("Failed to remove deafen role from member!")
+            }
+
+            val channel = bot.database.trnsctn {
+                ModerationDB.UserLogs.logUndeafen(victim, event.guild!!, event.user, reason)
+                val u = victim.m
+                for (p in ModerationDB.UserLog.find { (ModerationDB.UserLogs.user eq u.id) and (ModerationDB.UserLogs.type eq ModerationDB.LogType.DEAFEN.ordinal) and (ModerationDB.UserLogs.punishmentExpired eq false) }) {
+                    p.punishmentExpired = true
+                }
+                event.guild!!.m.modChannel
+            }
+
+            event.replyEmbeds(embed("Undeafened", description = "Undeafened ${victim.asMention}", stripPings = false)).ephemeral().await()
+
+            if (log && channel != null) {
+                event.guild!!.getTextChannelById(channel)!!.sendMessageEmbeds(embed("Undeafened", description = "Undeafened ${victim.asMention} for reason: $reason\n" +
                         "Performed by ${event.user.asMention}", stripPings = false)).await()
             }
         }
@@ -888,6 +965,67 @@ object Administration {
                 }
 
                 event.replyEmbeds(embed("Created Warning", description = "Successfully created warning level $level")).ephemeral().await()
+            }
+        }
+    }
+
+    @Command("deafenrole", "Set the guild deafened role")
+    suspend inline fun CmdCtx.deafenrole(@P("role", "The new role to set, or null") role: Role?) {
+        assertAdmin()
+
+        bot.database.trnsctn {
+            val guild = event.guild!!.m
+            guild.deafenRole = role?.idLong
+        }
+
+        event.replyEmbeds(Commands.embed("Set Role", description = "Successfully set deafen role to ${role?.asMention ?: "none"}", stripPings = false)).ephemeral().await()
+    }
+
+    fun launchListeners(bot: Bot) {
+        // TODO: figure out a better way to do this than just doing a query every second
+        bot.scope.launch {
+            while (true) {
+                delay(1000L)
+
+                bot.database.trnsctn {
+                    val now = Instant.now()
+                    // slightly inefficient, but I don't want to figure out how to do null checks in exposed
+                    for (punishment in ModerationDB.UserLog.find { ModerationDB.UserLogs.punishmentExpired eq false }) {
+                        if (((punishment.timestamp + punishment.punishmentDuration) ?: continue) <= now) {
+                            // Make copies of relevant things for thread safety
+                            val channelId = punishment.guild.modChannel
+                            val userId = punishment.user.discordId
+                            val type = punishment.type
+                            if (type != ModerationDB.LogType.DEAFEN.ordinal) {
+                                bot.log.error("Tried to remove expiring punishment type $type")
+                            }
+                            val guildId = punishment.guild.discordId
+                            val roleId = punishment.guild.deafenRole
+                            punishment.punishmentExpired = true
+                            launch inner@{
+                                val user = bot.jda.getUserById(userId) ?: return@inner
+                                val guild = bot.jda.getGuildById(guildId) ?: return@inner
+                                val role = guild.getRoleById(roleId ?: return@inner) ?: return@inner
+
+                                try {
+                                    guild.removeRoleFromMember(user, role).await()
+                                } catch (e: Throwable) {
+                                    bot.log.error("Failed to remove deafen role from user:\n${e.stackTraceToString()}")
+                                }
+
+                                val channel = bot.jda.getTextChannelById(channelId ?: return@inner) ?: return@inner
+
+                                channel.sendMessageEmbeds(
+                                    embed(
+                                        "Undeafened",
+                                        description = "Undeafened ${user.asMention} (${user.name}) for reason deafen expired",
+                                        stripPings = false
+                                    )
+                                ).await()
+                            }
+                        }
+                    }
+                }
             }
         }
     }

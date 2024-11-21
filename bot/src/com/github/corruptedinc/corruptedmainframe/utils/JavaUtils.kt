@@ -1,5 +1,6 @@
 package com.github.corruptedinc.corruptedmainframe.utils
 
+import com.github.corruptedinc.corruptedmainframe.commands.Leveling.Companion.LEVEL_BAR_WIDTH
 import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
 import java.nio.file.Files
 import java.nio.file.Path
@@ -138,3 +139,9 @@ private val imprecisionRegex = "00000+\\d\\d?$".toRegex()
 private val zeroRegex = "\\.0+$".toRegex()
 
 fun Double.sensibleString() = toString().replace(imprecisionRegex, "").replace(zeroRegex, "")
+
+fun bar(portion: Double, width: Int): String {
+    val parts = " ▏▎▍▌▋▊▉█"
+    val blocks = width * portion
+    return (parts.last().toString().repeat(blocks.toInt()) + parts[((blocks - blocks.toInt().toDouble()) * 8).toInt()]).padEnd(LEVEL_BAR_WIDTH, ' ')
+}
