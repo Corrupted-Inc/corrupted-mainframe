@@ -810,6 +810,32 @@ object Administration {
             }
         }
 
+        @Command("selfdeafen", "Temporarily your message read permissions")
+        suspend inline fun CmdCtx.selfdeafen(@P("hours", "The number of hours to deafen for") hours: Double, @P("reason", "The reason for self-deafening") reason: String?) {
+            val member = event.member ?: throw CommandException("Must be run in a guild!")
+
+            if (!event.guild!!.selfMember.hasPermission(Permission.MODERATE_MEMBERS) /*|| !event.guild!!.selfMember.canInteract(member) */) throw CommandException("Insufficient bot permissions!")
+            val duration = hours.hours
+            if (duration !in kotlin.time.Duration.ZERO..28.days) throw CommandException("Invalid duration!")
+            val r = bot.database.trnsctn {
+                event.guild!!.m.deafenRole
+            } ?: throw CommandException("Deafens are not configured in this guild")
+
+            val role = event.guild!!.getRoleById(r) ?: throw CommandException("Deafen role does not exist!")
+
+            try {
+                event.guild!!.addRoleToMember(member, role).await()
+            } catch (_: Throwable) {
+                throw CommandException("Failed to add deafen role!")
+            }
+
+            bot.database.trnsctn {
+                ModerationDB.UserLogs.logDeafen(event.user, event.guild!!, event.user, duration, reason ?: "")
+            }
+
+            event.replyEmbeds(embed("Deafening", description = "Deafening you for ${duration.inWholeHours} hours", stripPings = false)).ephemeral().await()
+        }
+
         @Command("deafen", "Deafens a user")
         suspend inline fun CmdCtx.deafen(@P("user", "The user to deafen") victim: User, @P("reason", "The deafen reason") reason: String, @P("hours", "The number of hours to deafen for") hours: Double, @P("publish", "If true, logs to the mod log channel") log: Boolean) {
             assertPermissions(Permission.MODERATE_MEMBERS, channel = null)
@@ -879,6 +905,21 @@ object Administration {
                 event.guild!!.getTextChannelById(channel)!!.sendMessageEmbeds(embed("Undeafened", description = "Undeafened ${victim.asMention} for reason: $reason\n" +
                         "Performed by ${event.user.asMention}", stripPings = false)).await()
             }
+        }
+
+        @Command("setdeafenrole", "Sets the guild's deafen role")
+        suspend inline fun CmdCtx.setDeafenRole(@P("role", "The role that deafened members are assigned") role: Role) {
+            assertAdmin()
+
+            if (!event.guild!!.selfMember.canInteract(role) || !event.guild!!.selfMember.hasPermission(Permission.MANAGE_ROLES)) {
+                throw CommandException("Missing permissions to assign role")
+            }
+
+            bot.database.trnsctn {
+                event.guild!!.m.deafenRole = role.idLong
+            }
+
+            event.replyEmbeds(Commands.embed("Set role", description = "Deafened members will be assigned the ${role.asMention} role.  The role will not be automatically configured, manually disable the view messages permission for this role in each category", stripPings = false)).ephemeral().await()
         }
 
         @Command("modlog", "View the moderation log for a user")

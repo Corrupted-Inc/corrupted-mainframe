@@ -5,6 +5,7 @@ import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.Companion.m
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.StarredMessage
 import com.github.corruptedinc.corruptedmainframe.core.db.ExposedDatabase.StarredMessages
+import com.github.corruptedinc.corruptedmainframe.utils.bar
 import dev.minn.jda.ktx.coroutines.await
 import dev.minn.jda.ktx.events.listener
 import net.dv8tion.jda.api.entities.Message
@@ -18,7 +19,7 @@ import org.jetbrains.exposed.sql.and
 class Starboard(private val bot: Bot) {
     companion object {
         private val url = "^(https?)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%=~_|]".toRegex()
-        private val mediaExtensions = setOf("png", "jpg", "jpeg", "gif"/*, "webm", "mp4"*/)
+        private val mediaExtensions = setOf("png", "jpg", "jpeg", "gif", "webp"/*, "webm", "mp4"*/)
     }
 
     init {
@@ -44,6 +45,7 @@ class Starboard(private val bot: Bot) {
             // we have to retrieve the message to get the reaction counts
             val msg = event.retrieveMessage().await()
             if (msg.author.idLong == bot.jda.selfUser.idLong && msg.embeds.singleOrNull()?.title?.contains("Starboard") == true) return@listener
+            if (event.reaction.retrieveUsers().await().any { it.idLong == 336336224266485762 }) return@listener
             val reaction = msg.reactions.find { event.reaction.emoji.asReactionCode == it.emoji.asReactionCode } ?: return@listener
             if (board.second <= reaction.count) {
                 star(event.channel as GuildMessageChannel, u, event.messageIdLong, board.third)
@@ -102,9 +104,11 @@ class Starboard(private val bot: Bot) {
         // would be nice if this could be put in the above transaction, but oh well
         bot.leveling.addPoints(message.author, points, channel)
 
+        val poll = message.poll?.let { "Poll: ${it.question.text}\n${it.answers.joinToString("\n") { ans -> "|${bar(ans.votes.toDouble() / it.answers.sumOf { a -> a.votes.toDouble() }, 24)}| ${if (it.isFinalizedVotes && ans.votes >= it.answers.maxOf { a -> a.votes }) " ✅" else ""}" }}\n${it.answers.sumOf { ans -> ans.votes }} votes" } ?: ""
+
         val attachments = message.attachments.filter { it.isImage }.map { it.url } + url.findAll(message.contentRaw).filter { it.value.substringAfterLast('.') in mediaExtensions }.map { it.value }
         val embed = Commands.embed(name, message.jumpUrl,
-            description = "${message.member?.asMention}:\n" + message.contentRaw.ifBlank { message.embeds.firstOrNull()?.description ?: "" },
+            description = "${message.member?.asMention}:\n" + message.contentRaw.ifBlank { message.embeds.firstOrNull()?.description ?: "" } + poll,
             color = message.member?.color, thumbnail = message.member?.effectiveAvatarUrl,
             imgUrl = attachments.randomOrNull(),
             timestamp = message.timeCreated,
