@@ -57,6 +57,8 @@ class Bot(val config: Config) {
         Database.connect(
             config.databaseUrl,
             driver = config.databaseDriver,
+            user = config.databaseUser,
+            password = config.databasePassword,
             databaseConfig = DatabaseConfig { useNestedTransactions = true }  // TODO: make individual functions not start their own transactions
         ), this)
 //    private val buttonListeners = mutableListOf<(ButtonInteractionEvent) -> Unit>()
